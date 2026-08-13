@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: sago
+
+  # ---- Database (PostgreSQL) ----
+  # 값은 .env / 환경변수에서 주입 (없으면 localhost 기본값 사용)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:accident_service}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update        # 개발 단계: update / 운영: validate 권장
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+server:
+  port: ${SERVER_PORT:8080}
+
+# springdoc(Swagger)·JWT·OAuth 등 세부 설정은 각 기능 붙일 때 여기 추가하세요.
