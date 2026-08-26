@@ -1,6 +1,6 @@
 ---
-name: "\U0001F41B Bug"
-about: 버그 리포트
+name: "[🐛 BUG] 작업 내용"
+about: 오류 해결을 위한 작업
 title: "[BUG] "
 labels: bug
 assignees: ''

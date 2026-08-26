@@ -1,6 +1,6 @@
 ---
-name: "\U0001F195 Feature / Chore"
-about: 새로운 기능 추가 또는 기능·버그와 무관한 잡무성 작업
+name: "[✨ FEAT] 작업 내용"
+about: 새로운 기능 추가
 title: "[FEAT] "
 labels: ''
 assignees: ''
