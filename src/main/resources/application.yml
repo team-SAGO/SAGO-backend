@@ -21,4 +21,11 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+# ---- Gemini API (체크리스트·보완 질문·촬영 판단·Vision 태깅/OCR·경위서) ----
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  model: ${GEMINI_MODEL:gemini-2.5-flash}
+  daily-request-limit: ${GEMINI_DAILY_REQUEST_LIMIT:250}
+  rpm-limit: ${GEMINI_RPM_LIMIT:10}
+
 # springdoc(Swagger)·JWT·OAuth 등 세부 설정은 각 기능 붙일 때 여기 추가하세요.
