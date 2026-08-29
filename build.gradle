@@ -57,7 +57,7 @@ dependencies {
 	// implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
 	//
 	// -- .env 로드 (spring-dotenv)
-	// implementation 'me.paulschwarz:spring-dotenv:4.0.0'
+	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 	//
 	// -- AWS S3 (음성 원본 / PDF 저장)
 	// implementation platform('software.amazon.awssdk:bom:2.31.0')
