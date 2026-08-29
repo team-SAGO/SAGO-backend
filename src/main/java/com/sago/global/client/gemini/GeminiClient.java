@@ -1,11 +1,13 @@
 package com.sago.global.client.gemini;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Gemini generateContent API 호출 클라이언트.
@@ -16,14 +18,22 @@ import java.util.List;
 public class GeminiClient {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+    private static final int CONNECT_TIMEOUT_MS = 5_000;
+    private static final int READ_TIMEOUT_MS = 30_000;
 
     private final RestClient restClient;
     private final GeminiProperties properties;
 
     public GeminiClient(GeminiProperties properties) {
         this.properties = properties;
+
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(CONNECT_TIMEOUT_MS);
+        requestFactory.setReadTimeout(READ_TIMEOUT_MS);
+
         this.restClient = RestClient.builder()
             .baseUrl(BASE_URL)
+            .requestFactory(requestFactory)
             .build();
     }
 
@@ -56,7 +66,16 @@ public class GeminiClient {
             throw new GeminiApiException("Gemini API 응답에 텍스트가 없습니다");
         }
 
-        return content.parts().get(0).text();
+        String text = content.parts().stream()
+            .map(GeminiPart::text)
+            .filter(part -> part != null && !part.isEmpty())
+            .collect(Collectors.joining());
+
+        if (text.isEmpty()) {
+            throw new GeminiApiException("Gemini API 응답에 텍스트가 없습니다");
+        }
+
+        return text;
     }
 
     private record GeminiRequest(List<GeminiContent> contents) {
