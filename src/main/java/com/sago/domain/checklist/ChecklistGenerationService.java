@@ -49,8 +49,9 @@ public class ChecklistGenerationService {
         try {
             String responseText = geminiClient.generateContent(buildPrompt(accident));
             contents = parseItems(responseText);
+            validateItems(contents);
             source = ChecklistSource.AI;
-        } catch (GeminiApiException | JsonProcessingException e) {
+        } catch (GeminiApiException | JsonProcessingException | IllegalArgumentException e) {
             contents = STATIC_CHECKLISTS.getOrDefault(accident.getAccidentType(), List.of());
             source = ChecklistSource.STATIC;
         }
@@ -105,6 +106,13 @@ public class ChecklistGenerationService {
             .trim();
         return objectMapper.readValue(json, new TypeReference<List<String>>() {
         });
+    }
+
+    private void validateItems(List<String> items) {
+        if (items == null || items.isEmpty() || items.size() > 5
+            || items.stream().anyMatch(item -> item == null || item.isBlank() || item.length() > 100)) {
+            throw new IllegalArgumentException("유효하지 않은 Gemini 체크리스트 응답");
+        }
     }
 
     private String koreanLabel(AccidentType type) {
