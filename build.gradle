@@ -64,8 +64,8 @@ dependencies {
 	// implementation 'software.amazon.awssdk:s3'
 	//
 	// -- Google Cloud STT (음성 → 텍스트)
-	// implementation platform('com.google.cloud:libraries-bom:26.50.0')
-	// implementation 'com.google.cloud:google-cloud-speech'
+	implementation platform('com.google.cloud:libraries-bom:26.50.0')
+	implementation 'com.google.cloud:google-cloud-speech'
 	//
 	// -- PDF 생성 (OpenHTMLtoPDF)
 	// implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
