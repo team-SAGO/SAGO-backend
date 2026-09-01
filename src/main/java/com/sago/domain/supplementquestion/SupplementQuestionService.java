@@ -61,10 +61,14 @@ public class SupplementQuestionService {
         String knownFacts = """
             - 사고 유형: %s
             - 발생 시각: %s
+            - 사고 위치: %s
             - 진행 방향: %s
             - 신호·도로 상태: %s""".formatted(
             accident.getAccidentType(),
             accident.getOccurredAt(),
+            accident.getLatitude() != null && accident.getLongitude() != null
+                ? "위도 %s, 경도 %s".formatted(accident.getLatitude(), accident.getLongitude())
+                : "정보 없음",
             accident.getDirection() != null ? accident.getDirection() : "정보 없음",
             accident.getRoadCondition() != null ? accident.getRoadCondition() : "정보 없음"
         );
