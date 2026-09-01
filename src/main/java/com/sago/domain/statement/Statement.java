@@ -36,7 +36,7 @@ public class Statement {
     @JoinColumn(name = "accident_id", nullable = false)
     private Accident accident;
 
-    @Column(name = "audio_file_url", nullable = false, length = 255)
+    @Column(name = "audio_file_url", nullable = false, length = 512)
     private String audioFileUrl;
 
     @Column(name = "stt_text", columnDefinition = "TEXT")
