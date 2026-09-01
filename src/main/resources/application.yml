@@ -28,4 +28,9 @@ gemini:
   daily-request-limit: ${GEMINI_DAILY_REQUEST_LIMIT:250}
   rpm-limit: ${GEMINI_RPM_LIMIT:10}
 
+# ---- Google Cloud STT (음성 진술 텍스트 변환) ----
+# 인증은 GOOGLE_APPLICATION_CREDENTIALS 환경변수(서비스 계정 키 경로)로 자동 처리됨
+stt:
+  language-code: ${STT_LANGUAGE_CODE:ko-KR}
+
 # springdoc(Swagger)·JWT·OAuth 등 세부 설정은 각 기능 붙일 때 여기 추가하세요.
