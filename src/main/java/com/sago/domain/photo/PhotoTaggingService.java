@@ -66,6 +66,8 @@ public class PhotoTaggingService {
             }
         }
 
+        // 같은 사진을 재태깅해도 중복 저장되지 않도록, 기존 태그를 지우고 새로 저장한다
+        photoTagRepository.deleteByPhoto_PhotoId(photo.getPhotoId());
         List<PhotoTag> savedTags = photoTagRepository.saveAll(tags);
         List<String> additionalConfirmationItems = extractTextArray(result, "additionalConfirmationItems");
 
@@ -90,12 +92,15 @@ public class PhotoTaggingService {
             return null;
         }
 
-        BigDecimal confidence = null;
-        if (tagNode.hasNonNull("confidence") && tagNode.get("confidence").isNumber()) {
-            confidence = tagNode.get("confidence").decimalValue();
+        if (!tagNode.hasNonNull("confidence") || !tagNode.get("confidence").isNumber()) {
+            return null;
+        }
+        BigDecimal confidence = tagNode.get("confidence").decimalValue();
+        if (confidence.compareTo(BigDecimal.ZERO) < 0 || confidence.compareTo(BigDecimal.ONE) > 0) {
+            return null;
         }
 
-        boolean needsManualCheck = confidence != null && confidence.compareTo(LOW_CONFIDENCE_THRESHOLD) < 0;
+        boolean needsManualCheck = confidence.compareTo(LOW_CONFIDENCE_THRESHOLD) < 0;
 
         return PhotoTag.builder()
             .photo(photo)

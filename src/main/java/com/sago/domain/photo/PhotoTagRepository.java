@@ -7,4 +7,6 @@ import java.util.List;
 public interface PhotoTagRepository extends JpaRepository<PhotoTag, Long> {
 
     List<PhotoTag> findByPhoto_PhotoId(Long photoId);
+
+    void deleteByPhoto_PhotoId(Long photoId);
 }
