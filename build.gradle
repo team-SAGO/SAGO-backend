@@ -59,9 +59,9 @@ dependencies {
 	// -- .env 로드 (spring-dotenv)
 	implementation 'me.paulschwarz:spring-dotenv:4.0.0'
 	//
-	// -- AWS S3 (음성 원본 / PDF 저장)
-	// implementation platform('software.amazon.awssdk:bom:2.31.0')
-	// implementation 'software.amazon.awssdk:s3'
+	// -- AWS S3 (음성 원본 / 사진 / 문서 / 프로필 이미지 / 경위서 PDF 저장)
+	implementation platform('software.amazon.awssdk:bom:2.31.0')
+	implementation 'software.amazon.awssdk:s3'
 	//
 	// -- Google Cloud STT (음성 → 텍스트)
 	implementation platform('com.google.cloud:libraries-bom:26.50.0')

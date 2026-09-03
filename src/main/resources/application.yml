@@ -18,6 +18,12 @@ spring:
         format_sql: true
     open-in-view: false
 
+  # ---- 업로드 파일 크기 상한 (종류별 세부 상한은 FileCategory에서 관리) ----
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB
+
 server:
   port: ${SERVER_PORT:8080}
 
@@ -27,6 +33,15 @@ gemini:
   model: ${GEMINI_MODEL:gemini-2.5-flash}
   daily-request-limit: ${GEMINI_DAILY_REQUEST_LIMIT:250}
   rpm-limit: ${GEMINI_RPM_LIMIT:10}
+
+# ---- AWS S3 (음성·사진·문서·프로필 이미지·경위서 PDF 저장) ----
+# access-key/secret-key를 비워두면 SDK 기본 자격증명 체인(~/.aws, IAM 역할)을 사용한다
+aws:
+  s3:
+    bucket: ${S3_BUCKET_NAME:}
+    region: ${AWS_REGION:ap-northeast-2}
+    access-key: ${AWS_ACCESS_KEY_ID:}
+    secret-key: ${AWS_SECRET_ACCESS_KEY:}
 
 # ---- Google Cloud STT (음성 진술 텍스트 변환) ----
 # 인증은 GOOGLE_APPLICATION_CREDENTIALS 환경변수(서비스 계정 키 경로)로 자동 처리됨
