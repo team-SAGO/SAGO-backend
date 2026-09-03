@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -19,25 +20,40 @@ public class GeminiClient {
 
     private static final String BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
     private static final int CONNECT_TIMEOUT_MS = 5_000;
-    private static final int READ_TIMEOUT_MS = 30_000;
+    private static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(30);
 
-    private final RestClient restClient;
     private final GeminiProperties properties;
+    private final RestClient defaultRestClient;
 
     public GeminiClient(GeminiProperties properties) {
         this.properties = properties;
+        this.defaultRestClient = buildRestClient(DEFAULT_READ_TIMEOUT);
+    }
 
+    public String generateContent(String prompt) {
+        return generateContent(prompt, defaultRestClient);
+    }
+
+    /**
+     * 5초 내 판단이 필요한 기능처럼, 기본 30초보다 짧은 응답 타임아웃이 필요할 때 사용한다.
+     * 지정한 시간 안에 HTTP 응답이 오지 않으면 GeminiApiException으로 즉시 실패한다.
+     */
+    public String generateContent(String prompt, Duration readTimeout) {
+        return generateContent(prompt, buildRestClient(readTimeout));
+    }
+
+    private RestClient buildRestClient(Duration readTimeout) {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        requestFactory.setReadTimeout(READ_TIMEOUT_MS);
+        requestFactory.setReadTimeout((int) readTimeout.toMillis());
 
-        this.restClient = RestClient.builder()
+        return RestClient.builder()
             .baseUrl(BASE_URL)
             .requestFactory(requestFactory)
             .build();
     }
 
-    public String generateContent(String prompt) {
+    private String generateContent(String prompt, RestClient restClient) {
         GeminiRequest request = new GeminiRequest(
             List.of(new GeminiContent(List.of(new GeminiPart(prompt))))
         );
