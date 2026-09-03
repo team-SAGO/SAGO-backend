@@ -3,16 +3,14 @@ package com.sago.domain.capturedecision;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sago.domain.accident.Accident;
+import com.sago.global.client.gemini.GeminiApiException;
 import com.sago.global.client.gemini.GeminiClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 /**
@@ -23,7 +21,7 @@ import java.util.stream.Collectors;
 @Service
 public class CaptureDecisionService {
 
-    private static final int TIMEOUT_SECONDS = 5;
+    private static final Duration TIMEOUT = Duration.ofSeconds(5);
     private static final int REASON_MAX_LENGTH = 255;
 
     private final GeminiClient geminiClient;
@@ -42,13 +40,10 @@ public class CaptureDecisionService {
     public Optional<CaptureDecision> decideByAi(Accident accident, String statementText) {
         String prompt = buildPrompt(accident, statementText);
 
-        CompletableFuture<String> future = CompletableFuture.supplyAsync(
-            () -> geminiClient.generateContent(prompt));
-
         String responseText;
         try {
-            responseText = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (TimeoutException | InterruptedException | ExecutionException e) {
+            responseText = geminiClient.generateContent(prompt, TIMEOUT);
+        } catch (GeminiApiException e) {
             return Optional.empty();
         }
 
@@ -85,9 +80,19 @@ public class CaptureDecisionService {
 
         List<String> recommendedPhotos = List.of();
         if (result.has("recommendedPhotos") && result.get("recommendedPhotos").isArray()) {
-            recommendedPhotos = objectMapper.convertValue(
-                result.get("recommendedPhotos"), objectMapper.getTypeFactory()
-                    .constructCollectionType(List.class, String.class));
+            JsonNode photosNode = result.get("recommendedPhotos");
+            boolean allTextual = true;
+            for (JsonNode photo : photosNode) {
+                if (!photo.isTextual()) {
+                    allTextual = false;
+                    break;
+                }
+            }
+            if (allTextual) {
+                recommendedPhotos = objectMapper.convertValue(
+                    photosNode, objectMapper.getTypeFactory()
+                        .constructCollectionType(List.class, String.class));
+            }
         }
 
         String combined = recommendedPhotos.isEmpty()
