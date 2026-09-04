@@ -14,6 +14,7 @@ import java.io.IOException;
  *
  * 파일 바이트는 한 번만 읽어 업로드와 STT에 재사용한다. 음성 파일은 최대 20MB라
  * MultipartFile에서 두 번 읽으면 그만큼 메모리를 더 쓰기 때문이다.
+ * 같은 이유로 확장자·용량 검증은 바이트를 읽기 전에 먼저 수행한다.
  *
  * 트랜잭션은 일부러 걸지 않았다. S3 업로드는 롤백되지 않는 외부 호출이라
  * 트랜잭션 안에서 수행하면 업로드가 끝날 때까지 DB 커넥션을 붙잡게 된다.
@@ -40,8 +41,12 @@ public class StatementUploadService {
             throw new S3UploadException("업로드할 음성 파일이 없습니다");
         }
 
-        byte[] audioBytes = readBytes(audioFile);
+        // 파일 전체를 메모리에 올리기 전에 확장자·용량부터 확인한다.
+        // getBytes() 이후에 검사하면 걸러낼 파일까지 메모리를 차지하게 된다.
         String extension = s3Uploader.extractExtension(audioFile.getOriginalFilename());
+        FileCategory.STATEMENT_AUDIO.validate(extension, audioFile.getSize());
+
+        byte[] audioBytes = readBytes(audioFile);
         String audioFileUrl = s3Uploader.upload(audioBytes, extension, FileCategory.STATEMENT_AUDIO);
 
         try {
