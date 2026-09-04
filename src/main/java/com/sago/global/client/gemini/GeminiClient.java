@@ -1,5 +1,6 @@
 package com.sago.global.client.gemini;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -7,6 +8,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -53,11 +55,26 @@ public class GeminiClient {
             .build();
     }
 
+    /**
+     * 이미지와 텍스트 프롬프트를 함께 전달한다 (Vision 태깅·OCR 등 멀티모달 입력용).
+     */
+    public String generateContentWithImage(String prompt, byte[] imageBytes, String mimeType) {
+        GeminiContent content = new GeminiContent(List.of(
+            new GeminiPart(prompt),
+            new GeminiPart(null, new InlineData(mimeType, Base64.getEncoder().encodeToString(imageBytes)))
+        ));
+        GeminiRequest request = new GeminiRequest(List.of(content));
+        return execute(request, defaultRestClient);
+    }
+
     private String generateContent(String prompt, RestClient restClient) {
         GeminiRequest request = new GeminiRequest(
             List.of(new GeminiContent(List.of(new GeminiPart(prompt))))
         );
+        return execute(request, restClient);
+    }
 
+    private String execute(GeminiRequest request, RestClient restClient) {
         GeminiResponse response;
         try {
             response = restClient.post()
@@ -106,6 +123,13 @@ public class GeminiClient {
     private record GeminiContent(List<GeminiPart> parts) {
     }
 
-    private record GeminiPart(String text) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record GeminiPart(String text, InlineData inlineData) {
+        private GeminiPart(String text) {
+            this(text, null);
+        }
+    }
+
+    private record InlineData(String mimeType, String data) {
     }
 }
