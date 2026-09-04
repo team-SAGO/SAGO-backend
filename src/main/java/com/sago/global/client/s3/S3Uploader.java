@@ -121,7 +121,11 @@ public class S3Uploader {
         }
     }
 
-    private String extractExtension(String originalFilename) {
+    /**
+     * 파일명에서 소문자 확장자를 뽑는다. 바이트를 직접 넘기는 오버로드를 쓰는 호출자가
+     * 원본 파일명에서 확장자를 얻어야 하므로 공개한다. 확장자가 없으면 null.
+     */
+    public String extractExtension(String originalFilename) {
         if (originalFilename == null) {
             return null;
         }
