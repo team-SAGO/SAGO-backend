@@ -2,6 +2,10 @@ spring:
   application:
     name: sago
 
+  # 보험 절차 안내 문구는 분량이 있어 별도 파일로 분리 (기획이 문구만 고칠 수 있도록)
+  config:
+    import: classpath:insurance-guide.yml
+
   # ---- Database (PostgreSQL) ----
   # 값은 .env / 환경변수에서 주입 (없으면 localhost 기본값 사용)
   datasource:
