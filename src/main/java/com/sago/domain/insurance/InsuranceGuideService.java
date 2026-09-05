@@ -21,9 +21,38 @@ public class InsuranceGuideService {
             throw new IllegalStateException(
                 "보험 절차 안내 문구가 비어 있습니다. insurance-guide.yml을 확인하세요.");
         }
+        properties.getSteps().forEach(InsuranceGuideService::validate);
+
         this.steps = properties.getSteps().stream()
             .sorted(Comparator.comparingInt(InsuranceGuideStep::getOrder))
             .toList();
+    }
+
+    /**
+     * 단계마다 실제 문구가 들어 있는지 확인한다.
+     * yml 키를 잘못 적으면 값이 null인 채로 바인딩되므로, 목록이 비었는지만 봐서는
+     * 제목 없는 안내가 그대로 배포될 수 있다.
+     */
+    private static void validate(InsuranceGuideStep step) {
+        if (isBlank(step.getTitle())) {
+            throw new IllegalStateException(
+                "보험 절차 안내 " + step.getOrder() + "단계의 title이 비어 있습니다. "
+                    + "insurance-guide.yml을 확인하세요.");
+        }
+        if (isBlank(step.getDescription())) {
+            throw new IllegalStateException(
+                "보험 절차 안내 " + step.getOrder() + "단계(" + step.getTitle()
+                    + ")의 description이 비어 있습니다. insurance-guide.yml을 확인하세요.");
+        }
+        if (step.getTips().stream().anyMatch(InsuranceGuideService::isBlank)) {
+            throw new IllegalStateException(
+                "보험 절차 안내 " + step.getOrder() + "단계(" + step.getTitle()
+                    + ")의 tips에 빈 항목이 있습니다. insurance-guide.yml을 확인하세요.");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**
