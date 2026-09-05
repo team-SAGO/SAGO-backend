@@ -61,11 +61,31 @@ public class User {
         this.createdAt = LocalDateTime.now();
     }
 
-    /** 프로필 초기 설정·회원정보 수정에서 사용한다. */
+    /**
+     * 프로필 초기 설정·회원정보 수정에서 사용한다.
+     * null인 항목은 "변경하지 않음"으로 보고 기존 값을 유지한다 — 수정 화면에서 일부 항목만
+     * 고쳐 보내는 경우가 많아, 보내지 않은 값이 지워지지 않도록 하기 위한 것이다.
+     */
     public void updateProfile(String nickname, String bikeModel, String bikeNumber) {
-        this.nickname = nickname;
-        this.bikeModel = bikeModel;
-        this.bikeNumber = bikeNumber;
+        if (nickname != null) {
+            this.nickname = nickname;
+        }
+        if (bikeModel != null) {
+            this.bikeModel = bikeModel;
+        }
+        if (bikeNumber != null) {
+            this.bikeNumber = bikeNumber;
+        }
+    }
+
+    /**
+     * 초기 프로필 설정을 마쳤는지 여부.
+     * 사고 접수와 경위서에 반드시 필요한 닉네임·차량번호가 모두 채워졌을 때를 기준으로 한다
+     * (차종은 없어도 사고 처리가 가능해 조건에서 뺐다).
+     */
+    public boolean isProfileSet() {
+        return nickname != null && !nickname.isBlank()
+            && bikeNumber != null && !bikeNumber.isBlank();
     }
 
     public void withdraw() {
