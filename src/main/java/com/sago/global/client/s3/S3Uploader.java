@@ -10,6 +10,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -52,6 +54,28 @@ public class S3Uploader {
     }
 
     /**
+     * 여러 파일을 한 번에 업로드하고 저장된 URL을 요청 순서대로 돌려준다.
+     * 사고 현장 사진·첨부 문서처럼 여러 장을 함께 올리는 기능이 사용한다.
+     *
+     * 중간에 한 장이라도 실패하면 이미 올라간 파일을 모두 지우고 예외를 던진다.
+     * 일부만 올라간 채로 두면 S3에는 파일이 있는데 DB에는 기록이 없는 고아 파일이 남기 때문이다.
+     */
+    public List<String> uploadAll(List<MultipartFile> files, FileCategory category) {
+        category.validateCount(files == null ? 0 : files.size());
+
+        List<String> uploadedUrls = new ArrayList<>(files.size());
+        try {
+            for (MultipartFile file : files) {
+                uploadedUrls.add(upload(file, category));
+            }
+        } catch (RuntimeException e) {
+            deleteAllQuietly(uploadedUrls);
+            throw e;
+        }
+        return uploadedUrls;
+    }
+
+    /**
      * 서버가 메모리에서 생성한 파일(경위서 PDF 등)을 업로드하고 저장된 URL을 돌려준다.
      */
     public String upload(byte[] bytes, String extension, FileCategory category) {
@@ -77,6 +101,19 @@ public class S3Uploader {
                 .build());
         } catch (Exception e) {
             throw new S3UploadException("S3 파일 삭제 실패: " + key, e);
+        }
+    }
+
+    /**
+     * 되돌리기용 삭제. 여기서 터진 예외로 원래 실패 원인이 가려지면 안 되므로 삼킨다.
+     */
+    private void deleteAllQuietly(List<String> fileUrls) {
+        for (String fileUrl : fileUrls) {
+            try {
+                delete(fileUrl);
+            } catch (RuntimeException ignored) {
+                // 삭제 실패 시 고아 파일이 남지만, 호출자에게는 원래 예외를 그대로 전달한다
+            }
         }
     }
 
