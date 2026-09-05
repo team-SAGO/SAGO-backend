@@ -1,12 +1,16 @@
 package com.sago.domain.accident;
 
+import com.sago.domain.user.User;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -20,9 +24,6 @@ import java.time.LocalDateTime;
 /**
  * 사고 케이스. 사고 발생 버튼 클릭 시 생성되며(FR-02), 체크리스트·진술·사진·경위서 등
  * 사고 대응 플로우의 모든 산출물이 이 엔티티의 accidentId를 참조한다.
- *
- * userId는 User 엔티티가 아직 없어 원시 FK 컬럼으로 두었다. User 엔티티가 만들어지면
- * @ManyToOne 연관관계로 교체할 것.
  */
 @Entity
 @Table(name = "accident")
@@ -35,8 +36,9 @@ public class Accident {
     @Column(name = "accident_id")
     private Long accidentId;
 
-    @Column(name = "user_id", nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "accident_type", nullable = false, length = 20)
@@ -76,10 +78,10 @@ public class Accident {
     private LocalDateTime createdAt;
 
     @Builder
-    public Accident(Long userId, AccidentType accidentType, InjuryLevel injurySelf,
+    public Accident(User user, AccidentType accidentType, InjuryLevel injurySelf,
                      InjuryLevel injuryOther, LocalDateTime occurredAt, BigDecimal latitude,
                      BigDecimal longitude, String direction, String roadCondition, String memo) {
-        this.userId = userId;
+        this.user = user;
         this.accidentType = accidentType;
         this.injurySelf = injurySelf;
         this.injuryOther = injuryOther;
@@ -111,5 +113,10 @@ public class Accident {
 
     public void complete() {
         this.status = AccidentStatus.COMPLETED;
+    }
+
+    /** 사고 기록의 주인인지 확인한다. 다른 회원의 사고에 접근하는 것을 막는 데 쓴다. */
+    public boolean isOwnedBy(Long userId) {
+        return this.user != null && this.user.getUserId().equals(userId);
     }
 }

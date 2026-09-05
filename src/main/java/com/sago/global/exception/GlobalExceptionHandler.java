@@ -1,5 +1,6 @@
 package com.sago.global.exception;
 
+import com.sago.domain.accident.AccidentNotFoundException;
 import com.sago.domain.auth.WithdrawnUserException;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.global.client.oauth.OAuthApiException;
@@ -26,6 +27,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalidToken(InvalidTokenException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(new ErrorResponse("INVALID_TOKEN", e.getMessage()));
+    }
+
+    @ExceptionHandler(AccidentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAccidentNotFound(AccidentNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("ACCIDENT_NOT_FOUND", e.getMessage()));
     }
 
     @ExceptionHandler(UserNotFoundException.class)
