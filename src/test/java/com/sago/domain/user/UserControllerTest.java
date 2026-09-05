@@ -10,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -19,9 +20,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 필터에서 꺼낸 userId가 컨트롤러 principal까지 실제로 전달되는지, 그리고 토큰 없이는
  * 접근이 막히는지를 확인한다. 서비스 단위 테스트로는 검증되지 않는 구간이다.
+ *
+ * 각 테스트는 트랜잭션 롤백으로 정리한다 — 다른 테스트가 남긴 사고 기록이 회원을 참조하고 있으면
+ * 회원을 지울 수 없어, 삭제 방식으로는 테스트 클래스 간 실행 순서에 결과가 좌우된다.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class UserControllerTest {
 
     @Autowired
@@ -37,7 +42,6 @@ class UserControllerTest {
 
     @BeforeEach
     void setUp() {
-        userRepository.deleteAll();
         User user = userRepository.save(
             User.builder().email("rider@example.com").nickname("라이더").build());
         accessToken = jwtTokenProvider.createAccessToken(user.getUserId());

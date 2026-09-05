@@ -1,5 +1,6 @@
 package com.sago.global.exception;
 
+import com.sago.domain.accident.AccidentNotFoundException;
 import com.sago.domain.auth.UnsupportedProviderException;
 import com.sago.domain.auth.WithdrawnUserException;
 import com.sago.domain.user.UserNotFoundException;
@@ -33,6 +34,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnsupportedProvider(UnsupportedProviderException e) {
         return ResponseEntity.badRequest()
             .body(new ErrorResponse("UNSUPPORTED_PROVIDER", e.getMessage()));
+    }
+
+    @ExceptionHandler(AccidentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAccidentNotFound(AccidentNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("ACCIDENT_NOT_FOUND", e.getMessage()));
     }
 
     @ExceptionHandler(UserNotFoundException.class)
