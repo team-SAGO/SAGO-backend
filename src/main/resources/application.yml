@@ -52,4 +52,21 @@ aws:
 stt:
   language-code: ${STT_LANGUAGE_CODE:ko-KR}
 
-# springdoc(Swagger)·JWT·OAuth 등 세부 설정은 각 기능 붙일 때 여기 추가하세요.
+# ---- JWT (로그인 토큰 발급/검증) ----
+jwt:
+  secret: ${JWT_SECRET:}
+  access-expiration: ${JWT_ACCESS_EXPIRATION:3600000}      # 1시간 (ms)
+  refresh-expiration: ${JWT_REFRESH_EXPIRATION:1209600000} # 14일 (ms)
+
+# ---- OAuth2 소셜 로그인 (카카오 / 구글) ----
+oauth:
+  kakao:
+    client-id: ${KAKAO_CLIENT_ID:}
+    client-secret: ${KAKAO_CLIENT_SECRET:}
+    redirect-uri: ${KAKAO_REDIRECT_URI:http://localhost:8080/auth/social/kakao/callback}
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+    client-secret: ${GOOGLE_CLIENT_SECRET:}
+    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:8080/auth/social/google/callback}
+
+# springdoc(Swagger) 등 나머지 세부 설정은 각 기능 붙일 때 여기 추가하세요.
