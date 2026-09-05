@@ -49,9 +49,9 @@ dependencies {
 	// TODO: 필요할 때 주석 해제해서 사용하세요 (팀 스택 문서 기준 특화 라이브러리)
 	// =====================================================================
 	// -- JWT (jjwt) : 로그인 토큰 발급/검증
-	// implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-	// runtimeOnly   'io.jsonwebtoken:jjwt-impl:0.12.6'
-	// runtimeOnly   'io.jsonwebtoken:jjwt-jackson:0.12.6'
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly   'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly   'io.jsonwebtoken:jjwt-jackson:0.12.6'
 	//
 	// -- API 문서 (springdoc / Swagger UI)
 	// implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
