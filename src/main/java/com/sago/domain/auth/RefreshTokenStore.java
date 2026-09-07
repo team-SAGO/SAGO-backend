@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HexFormat;
 
@@ -22,12 +23,12 @@ import java.util.HexFormat;
 public class RefreshTokenStore {
 
     private final RefreshTokenRepository refreshTokenRepository;
-    private final long refreshExpirationMillis;
+    private final Duration refreshExpiration;
 
     public RefreshTokenStore(RefreshTokenRepository refreshTokenRepository,
                              JwtProperties jwtProperties) {
         this.refreshTokenRepository = refreshTokenRepository;
-        this.refreshExpirationMillis = jwtProperties.getRefreshExpiration();
+        this.refreshExpiration = Duration.ofMillis(jwtProperties.getRefreshExpiration());
     }
 
     @Transactional
@@ -35,32 +36,31 @@ public class RefreshTokenStore {
         refreshTokenRepository.save(RefreshToken.builder()
             .user(user)
             .tokenHash(hash(refreshToken))
-            .expiresAt(LocalDateTime.now().plusNanos(refreshExpirationMillis * 1_000_000))
+            .expiresAt(LocalDateTime.now().plus(refreshExpiration))
             .build());
     }
 
     /**
-     * 저장된 토큰인지 확인한다. 서명·만료가 멀쩡해도 여기에 없으면 이미 무효화된 토큰이다
-     * (로그아웃했거나, 재발급에 한 번 쓰였거나, 회원이 탈퇴한 경우).
-     */
-    @Transactional(readOnly = true)
-    public boolean isStored(String refreshToken) {
-        return refreshTokenRepository.existsByTokenHash(hash(refreshToken));
-    }
-
-    /**
-     * 토큰 하나를 무효화한다. 이미 없어도 조용히 넘어간다 —
-     * 로그아웃을 두 번 눌렀다고 오류를 낼 이유가 없다.
+     * 토큰을 무효화하고, 이번 호출이 실제로 무효화했는지 돌려준다.
+     *
+     * 확인과 삭제를 한 번의 원자적 연산으로 합친 것이 핵심이다. "있는지 보고 → 지운다"로 나누면
+     * 같은 토큰으로 동시에 두 요청이 들어왔을 때 양쪽 다 확인을 통과해 각자 새 토큰을 받는다.
+     * 그러면 회전의 핵심인 "한 번 쓴 토큰은 죽는다"는 보장이 깨진다. 액세스 토큰이 만료된 순간
+     * 여러 요청이 함께 재발급을 시도하는 것은 앱에서 흔한 패턴이라 실제로 일어난다.
+     *
+     * 삭제된 행 수로 승자를 가리므로, true를 받은 쪽만 재발급을 이어가면 된다.
+     *
+     * @return 이번 호출로 무효화했으면 true, 이미 없던 토큰이면 false
      */
     @Transactional
-    public void revoke(String refreshToken) {
-        refreshTokenRepository.deleteByTokenHash(hash(refreshToken));
+    public boolean consume(String refreshToken) {
+        return refreshTokenRepository.deleteByTokenHash(hash(refreshToken)) > 0;
     }
 
     /** 회원의 모든 토큰을 무효화한다. 회원 탈퇴 시 모든 기기에서 로그아웃시키기 위해 쓴다. */
     @Transactional
     public void revokeAll(Long userId) {
-        refreshTokenRepository.deleteByUser_UserId(userId);
+        refreshTokenRepository.deleteAllByUserId(userId);
     }
 
     /**

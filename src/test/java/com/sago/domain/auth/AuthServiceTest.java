@@ -63,7 +63,7 @@ class AuthServiceTest {
         authService = new AuthService(
             List.of(kakaoClient), registrar, refreshTokenStore, userRepository, jwtTokenProvider);
         // 저장소에 남아 있는 토큰인지 확인하는 단계는 기본적으로 통과시킨다.
-        when(refreshTokenStore.isStored(any())).thenReturn(true);
+        when(refreshTokenStore.consume(any())).thenReturn(true);
     }
 
     @Test
@@ -150,9 +150,9 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("저장소에 없는 refresh 토큰은 거부된다")
+    @DisplayName("이미 사용되었거나 무효화된 refresh 토큰은 거부된다")
     void reissueRejectsRevokedToken() {
-        when(refreshTokenStore.isStored(any())).thenReturn(false);
+        when(refreshTokenStore.consume(any())).thenReturn(false);
 
         String refreshToken = jwtTokenProvider.createRefreshToken(7L);
 
@@ -170,7 +170,7 @@ class AuthServiceTest {
         String oldToken = jwtTokenProvider.createRefreshToken(7L);
         TokenResponse response = authService.reissue(oldToken);
 
-        verify(refreshTokenStore).revoke(oldToken);
+        verify(refreshTokenStore).consume(oldToken);
         verify(refreshTokenStore).save(user, response.refreshToken());
     }
 
@@ -192,7 +192,7 @@ class AuthServiceTest {
 
         authService.logout(refreshToken);
 
-        verify(refreshTokenStore).revoke(refreshToken);
+        verify(refreshTokenStore).consume(refreshToken);
         verify(refreshTokenStore, never()).revokeAll(any());
     }
 

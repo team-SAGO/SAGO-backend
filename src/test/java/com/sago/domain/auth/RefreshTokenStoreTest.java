@@ -40,6 +40,22 @@ class RefreshTokenStoreTest {
             User.builder().email("rider@example.com").nickname("라이더").build());
     }
 
+    /** consume은 무효화까지 하므로, 존재 확인에는 리포지토리를 직접 본다. */
+    private boolean stored(String token) {
+        return refreshTokenRepository.findAll().stream()
+            .anyMatch(row -> row.getTokenHash().equals(sha256Hex(token)));
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of()
+                .formatHex(digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     @Test
     @DisplayName("저장한 토큰은 저장소에서 확인된다")
     void savedTokenIsFound() {
@@ -47,7 +63,7 @@ class RefreshTokenStoreTest {
 
         refreshTokenStore.save(user, token);
 
-        assertThat(refreshTokenStore.isStored(token)).isTrue();
+        assertThat(stored(token)).isTrue();
     }
 
     @Test
@@ -55,7 +71,7 @@ class RefreshTokenStoreTest {
     void unknownTokenIsNotFound() {
         String token = jwtTokenProvider.createRefreshToken(user.getUserId());
 
-        assertThat(refreshTokenStore.isStored(token)).isFalse();
+        assertThat(stored(token)).isFalse();
     }
 
     @Test
@@ -73,24 +89,32 @@ class RefreshTokenStoreTest {
     }
 
     @Test
-    @DisplayName("무효화한 토큰은 더 이상 확인되지 않는다")
-    void revokedTokenIsGone() {
+    @DisplayName("무효화하면 true를 돌려주고 토큰이 사라진다")
+    void consumeRemovesToken() {
         String token = jwtTokenProvider.createRefreshToken(user.getUserId());
         refreshTokenStore.save(user, token);
 
-        refreshTokenStore.revoke(token);
-
-        assertThat(refreshTokenStore.isStored(token)).isFalse();
+        assertThat(refreshTokenStore.consume(token)).isTrue();
+        assertThat(stored(token)).isFalse();
     }
 
     @Test
-    @DisplayName("이미 없는 토큰을 무효화해도 오류가 나지 않는다")
-    void revokingUnknownTokenIsSilent() {
+    @DisplayName("같은 토큰을 두 번 무효화하면 두 번째는 false다")
+    void secondConsumeReturnsFalse() {
+        String token = jwtTokenProvider.createRefreshToken(user.getUserId());
+        refreshTokenStore.save(user, token);
+
+        // 경합에서 진 쪽이 받는 값이다. 이 false 하나로 재발급을 막는다.
+        assertThat(refreshTokenStore.consume(token)).isTrue();
+        assertThat(refreshTokenStore.consume(token)).isFalse();
+    }
+
+    @Test
+    @DisplayName("없는 토큰을 무효화하면 오류 없이 false를 돌려준다")
+    void consumingUnknownTokenReturnsFalse() {
         String token = jwtTokenProvider.createRefreshToken(user.getUserId());
 
-        refreshTokenStore.revoke(token);
-
-        assertThat(refreshTokenStore.isStored(token)).isFalse();
+        assertThat(refreshTokenStore.consume(token)).isFalse();
     }
 
     @Test
@@ -103,8 +127,8 @@ class RefreshTokenStoreTest {
 
         refreshTokenStore.revokeAll(user.getUserId());
 
-        assertThat(refreshTokenStore.isStored(phone)).isFalse();
-        assertThat(refreshTokenStore.isStored(tablet)).isFalse();
+        assertThat(stored(phone)).isFalse();
+        assertThat(stored(tablet)).isFalse();
     }
 
     @Test
@@ -118,7 +142,7 @@ class RefreshTokenStoreTest {
 
         refreshTokenStore.revokeAll(user.getUserId());
 
-        assertThat(refreshTokenStore.isStored(mine)).isFalse();
-        assertThat(refreshTokenStore.isStored(theirs)).isTrue();
+        assertThat(stored(mine)).isFalse();
+        assertThat(stored(theirs)).isTrue();
     }
 }
