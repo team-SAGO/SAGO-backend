@@ -1,5 +1,6 @@
 package com.sago.domain.user;
 
+import com.sago.domain.auth.RefreshTokenStore;
 import com.sago.domain.user.dto.ProfileResponse;
 import com.sago.domain.user.dto.ProfileUpdateRequest;
 import org.springframework.stereotype.Service;
@@ -15,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final RefreshTokenStore refreshTokenStore;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, RefreshTokenStore refreshTokenStore) {
         this.userRepository = userRepository;
+        this.refreshTokenStore = refreshTokenStore;
     }
 
     @Transactional(readOnly = true)
@@ -33,6 +36,25 @@ public class UserService {
             request.bikeModel(),
             normalizeBikeNumber(request.bikeNumber()));
         return ProfileResponse.from(user);
+    }
+
+    /**
+     * 회원 탈퇴.
+     *
+     * 행을 지우지 않고 deletedAt만 채운다. 사고 기록은 보험 처리의 근거 자료라 회원이 나갔다고
+     * 함께 사라지면 안 되고, accident가 user를 참조하고 있어 물리 삭제 자체가 불가능하다.
+     *
+     * 남아 있는 refresh 토큰은 모두 무효화한다. 그러지 않으면 탈퇴한 뒤에도 다른 기기에서
+     * 재발급으로 계속 접근할 수 있다.
+     *
+     * TODO: 탈퇴 후에도 이메일·닉네임이 그대로 남는다. 개인정보를 어디까지 지울지는
+     *       법률 검토가 필요해 별도 이슈로 다룬다.
+     */
+    @Transactional
+    public void withdraw(Long userId) {
+        User user = findActiveUser(userId);
+        user.withdraw();
+        refreshTokenStore.revokeAll(userId);
     }
 
     /**

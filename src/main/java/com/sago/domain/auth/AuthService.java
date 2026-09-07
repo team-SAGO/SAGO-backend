@@ -12,7 +12,6 @@ import com.sago.global.jwt.JwtTokenProvider;
 import com.sago.global.jwt.TokenType;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -33,15 +32,18 @@ public class AuthService {
 
     private final Map<AuthProvider, OAuthClient> oAuthClients = new EnumMap<>(AuthProvider.class);
     private final SocialAccountRegistrar socialAccountRegistrar;
+    private final RefreshTokenStore refreshTokenStore;
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
 
     public AuthService(List<OAuthClient> oAuthClients,
                        SocialAccountRegistrar socialAccountRegistrar,
+                       RefreshTokenStore refreshTokenStore,
                        UserRepository userRepository,
                        JwtTokenProvider jwtTokenProvider) {
         oAuthClients.forEach(client -> this.oAuthClients.put(client.getProvider(), client));
         this.socialAccountRegistrar = socialAccountRegistrar;
+        this.refreshTokenStore = refreshTokenStore;
         this.userRepository = userRepository;
         this.jwtTokenProvider = jwtTokenProvider;
     }
@@ -67,7 +69,12 @@ public class AuthService {
             throw new WithdrawnUserException("탈퇴한 회원입니다. 고객센터를 통해 복구를 요청해주세요.");
         }
 
-        return new LoginResponse(issueTokens(user.getUserId()), newUser);
+        return new LoginResponse(issueTokens(user), newUser);
+    }
+
+    /** 로그아웃. 넘겨받은 refresh 토큰만 무효화하므로 다른 기기의 로그인은 유지된다. */
+    public void logout(String refreshToken) {
+        refreshTokenStore.revoke(refreshToken);
     }
 
     /**
@@ -87,23 +94,37 @@ public class AuthService {
     /**
      * Refresh 토큰으로 Access 토큰을 재발급한다.
      *
-     * TODO: 현재는 서명과 만료만 확인하는 무상태 방식이라, 발급된 refresh 토큰은 만료 전까지 계속 유효하다.
-     *       로그아웃(설정 화면)에서 토큰을 즉시 무효화하려면 refresh 토큰 저장소가 필요하다 — 해당 이슈에서 추가할 것.
+     * 서명·만료뿐 아니라 저장소에 남아 있는 토큰인지도 확인한다. 서명이 멀쩡해도 로그아웃했거나
+     * 이미 재발급에 쓰인 토큰이면 저장소에 없으므로 거부된다.
+     *
+     * 재발급한 뒤에는 쓴 토큰을 버리고 새 토큰을 저장한다(회전). 그대로 두면 탈취된 토큰이
+     * 만료 전까지 계속 유효하지만, 회전시키면 한 토큰은 한 번만 쓸 수 있다.
      */
-    @Transactional(readOnly = true)
     public TokenResponse reissue(String refreshToken) {
         Long userId = jwtTokenProvider.parseUserId(refreshToken, TokenType.REFRESH);
 
-        userRepository.findByUserIdAndDeletedAtIsNull(userId)
+        if (!refreshTokenStore.isStored(refreshToken)) {
+            throw new InvalidTokenException("이미 사용되었거나 무효화된 토큰입니다.");
+        }
+
+        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
             .orElseThrow(() -> new InvalidTokenException("존재하지 않거나 탈퇴한 회원의 토큰입니다."));
 
-        return issueTokens(userId);
+        refreshTokenStore.revoke(refreshToken);
+        return issueTokens(user);
     }
 
-    private TokenResponse issueTokens(Long userId) {
+    /**
+     * 토큰 한 쌍을 발급하고 refresh 토큰을 저장소에 남긴다.
+     * 저장에 실패하면 재발급이 안 되는 토큰을 쥐여주는 셈이라, 저장까지 끝난 뒤에 응답을 만든다.
+     */
+    private TokenResponse issueTokens(User user) {
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getUserId());
+        refreshTokenStore.save(user, refreshToken);
+
         return new TokenResponse(
-            jwtTokenProvider.createAccessToken(userId),
-            jwtTokenProvider.createRefreshToken(userId),
+            jwtTokenProvider.createAccessToken(user.getUserId()),
+            refreshToken,
             jwtTokenProvider.getAccessExpirationSeconds()
         );
     }

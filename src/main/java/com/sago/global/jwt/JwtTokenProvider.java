@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.UUID;
 
 /**
  * Access·Refresh 토큰 발급과 검증을 담당한다.
@@ -48,9 +49,17 @@ public class JwtTokenProvider {
         return accessExpiration / 1000;
     }
 
+    /**
+     * 토큰마다 고유한 jti를 넣는다.
+     *
+     * JWT의 iat·exp는 초 단위라, 같은 사용자에게 같은 초에 발급하면 나머지 클레임이 모두 같아
+     * 토큰 문자열이 완전히 동일해진다. 그러면 refresh 토큰을 회전시켜도 새 토큰이 옛 토큰과
+     * 같아서 무효화가 성립하지 않고, 저장소의 해시도 충돌한다.
+     */
     private String createToken(Long userId, TokenType type, long expirationMillis) {
         Date now = new Date();
         return Jwts.builder()
+            .id(UUID.randomUUID().toString())
             .subject(String.valueOf(userId))
             .claim(CLAIM_TYPE, type.name())
             .issuedAt(now)
