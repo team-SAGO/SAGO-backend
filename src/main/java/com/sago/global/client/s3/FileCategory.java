@@ -8,6 +8,10 @@ import java.util.Set;
  *
  * 용량 상한과 개수 상한은 기획안에 명시된 값이 없어 일반적인 모바일 업로드 기준으로 잡았다.
  * 실제 요금·정책이 정해지면 이 값만 조정하면 된다.
+ *
+ * 주의: 이 값들은 application.yml의 spring.servlet.multipart 설정과 함께 조정해야 한다.
+ * (최대 용량 x 최대 개수)가 max-request-size를 넘으면 요청이 여기 오기 전에 잘려서
+ * 아래 검증이 실행될 기회조차 없다.
  */
 public enum FileCategory {
 
@@ -65,7 +69,7 @@ public enum FileCategory {
      */
     public void validateCount(int count) {
         if (count <= 0) {
-            throw new S3UploadException("업로드할 파일이 없습니다");
+            throw new S3UploadException("업로드할 파일 목록이 비어 있습니다");
         }
         if (count > maxCount) {
             throw new S3UploadException(

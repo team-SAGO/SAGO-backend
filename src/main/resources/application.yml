@@ -19,10 +19,13 @@ spring:
     open-in-view: false
 
   # ---- 업로드 파일 크기 상한 (종류별 세부 상한은 FileCategory에서 관리) ----
+  # max-request-size는 FileCategory의 (최대 용량 x 최대 개수) 중 가장 큰 값을 넘어야 한다.
+  # 현재 기준은 사고 사진 10MB x 10장 = 100MB. 이 값이 더 작으면 요청이 애플리케이션에
+  # 도달하기 전에 잘려서 FileCategory 검증도, 사용자에게 보낼 안내 메시지도 무의미해진다.
   servlet:
     multipart:
       max-file-size: 20MB
-      max-request-size: 25MB
+      max-request-size: 105MB
 
 server:
   port: ${SERVER_PORT:8080}
