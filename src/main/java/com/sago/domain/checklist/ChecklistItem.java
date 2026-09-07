@@ -67,4 +67,20 @@ public class ChecklistItem {
         this.completed = true;
         this.completedAt = LocalDateTime.now();
     }
+
+    /**
+     * 완료 표시를 해제한다.
+     *
+     * 사고 직후 급한 상황에서 누르는 화면이라 잘못 체크하는 일이 생긴다.
+     * 되돌릴 수 없으면 사용자가 완료하지 않은 항목을 완료로 남긴 채 다음 단계로 넘어가게 된다.
+     */
+    public void uncomplete() {
+        this.completed = false;
+        this.completedAt = null;
+    }
+
+    /** 소속 사고가 맞는지 확인한다. 다른 사고의 항목을 지정해 수정하는 것을 막는 데 쓴다. */
+    public boolean belongsTo(Long accidentId) {
+        return this.accident != null && this.accident.getAccidentId().equals(accidentId);
+    }
 }
