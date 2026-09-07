@@ -142,12 +142,40 @@ class TermsServiceTest {
     }
 
     @Test
-    @DisplayName("동의 이력은 덮어쓰지 않고 쌓인다")
-    void agreementsAreAppendedNotOverwritten() {
+    @DisplayName("상태가 바뀐 약관만 새 행으로 쌓인다")
+    void onlyChangedTermsAreAppended() {
         termsService.agree(1L, allAgreed());
+        assertThat(stored).hasSize(4);
+
+        // 마케팅만 껐다. 필수 약관은 상태가 그대로라 새 기록이 남으면 안 된다 —
+        // 사용자에게 이용약관을 다시 보여준 것이 아닌데 동의 기록이 생기면 근거가 어긋난다.
         termsService.agree(1L, request(true, true, true, false));
 
+        assertThat(stored).hasSize(5);
+        assertThat(stored.get(4).getTermsType()).isEqualTo(TermsType.MARKETING);
+        assertThat(stored.get(4).isAgreed()).isFalse();
+    }
+
+    @Test
+    @DisplayName("같은 내용을 다시 보내면 아무것도 쌓이지 않는다")
+    void resubmittingSameStateAddsNothing() {
+        termsService.agree(1L, allAgreed());
+        termsService.agree(1L, allAgreed());
+
+        assertThat(stored).hasSize(4);
+    }
+
+    @Test
+    @DisplayName("약관이 개정되면 같은 동의라도 새 행으로 남는다")
+    void versionBumpIsRecordedAsNewAgreement() {
+        termsService.agree(1L, allAgreed());
+
+        TermsService afterRevision =
+            new TermsService(catalog("2.0"), termsAgreementRepository, userRepository);
+        afterRevision.agree(1L, allAgreed());
+
         assertThat(stored).hasSize(8);
+        assertThat(stored.get(4).getVersion()).isEqualTo("2.0");
     }
 
     private TermsAgreementRequest allAgreed() {

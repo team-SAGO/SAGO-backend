@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,8 +58,13 @@ public class TermsService {
         User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
             .orElseThrow(() -> new UserNotFoundException("존재하지 않거나 탈퇴한 회원입니다."));
 
+        Map<TermsType, TermsAgreement> latest = findLatestByType(userId);
+
         // 기존 행을 고치지 않고 새 행을 쌓는다. 과거 동의 기록이 남아야 하기 때문이다.
-        List<TermsAgreement> saved = submitted.entrySet().stream()
+        // 다만 상태가 그대로인 약관은 새로 남기지 않는다 — 아래 hasChanged() 참고.
+        List<TermsAgreement> newRows = submitted.entrySet().stream()
+            .filter(entry -> hasChanged(latest.get(entry.getKey()),
+                entry.getValue(), catalog.find(entry.getKey()).getVersion()))
             .map(entry -> TermsAgreement.builder()
                 .user(user)
                 .termsType(entry.getKey())
@@ -66,20 +72,43 @@ public class TermsService {
                 .version(catalog.find(entry.getKey()).getVersion())
                 .build())
             .toList();
-        termsAgreementRepository.saveAll(saved);
+        termsAgreementRepository.saveAll(newRows);
 
+        // 같은 빈 안의 호출이라 프록시를 타지 않는다. getStatuses()의 readOnly 트랜잭션이
+        // 새로 열리는 게 아니라 이 쓰기 트랜잭션 안에서 실행된다. 방금 저장한 행은 조회 직전
+        // auto flush로 반영되므로 결과는 맞다. 이 메서드를 다른 빈으로 옮기거나 flush 정책을
+        // 바꿀 때 이 전제가 깨질 수 있어 적어둔다.
         return getStatuses(userId);
     }
 
-    @Transactional(readOnly = true)
-    public List<TermsAgreementStatus> getStatuses(Long userId) {
-        Map<TermsType, TermsAgreement> latest = termsAgreementRepository.findLatestByUserId(userId)
-            .stream()
+    /**
+     * 새 동의 기록을 남겨야 하는지 판단한다.
+     *
+     * 동의한 적이 없거나, 동의 여부가 바뀌었거나, 약관이 개정되어 버전이 달라진 경우에만 남긴다.
+     *
+     * 상태가 그대로인데도 행을 쌓으면 실제로는 일어나지 않은 동의를 기록하게 된다.
+     * 설정 화면에서 마케팅 수신만 껐다 켜는 경우, 사용자에게 이용약관을 다시 보여준 것이
+     * 아닌데도 그 시각에 이용약관에 동의한 기록이 남는다. 동의 이력은 나중에 근거로 쓰이는
+     * 자료라, 없었던 동의가 섞이면 기록 전체의 신뢰가 떨어진다.
+     */
+    private boolean hasChanged(TermsAgreement latest, boolean agreed, String currentVersion) {
+        return latest == null
+            || latest.isAgreed() != agreed
+            || !currentVersion.equals(latest.getVersion());
+    }
+
+    private Map<TermsType, TermsAgreement> findLatestByType(Long userId) {
+        return termsAgreementRepository.findLatestByUserId(userId).stream()
             .collect(Collectors.toMap(
                 TermsAgreement::getTermsType,
                 agreement -> agreement,
                 (first, second) -> second,
                 () -> new EnumMap<>(TermsType.class)));
+    }
+
+    @Transactional(readOnly = true)
+    public List<TermsAgreementStatus> getStatuses(Long userId) {
+        Map<TermsType, TermsAgreement> latest = findLatestByType(userId);
 
         return catalog.findAll().stream()
             .map(document -> toStatus(document, latest.get(document.getType())))
@@ -133,7 +162,7 @@ public class TermsService {
     private void verifyRequiredAgreed(Map<TermsType, Boolean> submitted) {
         Set<TermsType> notAgreed = catalog.requiredTypes().stream()
             .filter(type -> !Boolean.TRUE.equals(submitted.get(type)))
-            .collect(Collectors.toCollection(() -> java.util.EnumSet.noneOf(TermsType.class)));
+            .collect(Collectors.toCollection(() -> EnumSet.noneOf(TermsType.class)));
 
         if (!notAgreed.isEmpty()) {
             throw new RequiredTermsNotAgreedException(

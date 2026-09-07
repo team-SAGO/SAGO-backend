@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -30,7 +31,14 @@ import java.time.LocalDateTime;
  * 마케팅 수신처럼 철회할 수 있는 항목도 같은 구조로 다룬다 — 철회는 agreed=false인 새 행이다.
  */
 @Entity
-@Table(name = "terms_agreement")
+@Table(
+    name = "terms_agreement",
+    // 이력을 쌓는 테이블이라 행이 계속 늘어난다. 현재 동의 상태를 볼 때마다 회원의 유형별
+    // 최신 행을 찾으므로, 인덱스가 없으면 회원 수가 늘수록 그 조회가 느려진다.
+    indexes = @Index(
+        name = "idx_terms_agreement_user_type",
+        columnList = "user_id, terms_type")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class TermsAgreement {
