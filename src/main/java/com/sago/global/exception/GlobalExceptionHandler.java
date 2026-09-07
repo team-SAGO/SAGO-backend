@@ -1,5 +1,6 @@
 package com.sago.global.exception;
 
+import com.sago.domain.auth.UnsupportedProviderException;
 import com.sago.domain.auth.WithdrawnUserException;
 import com.sago.global.client.oauth.OAuthApiException;
 import com.sago.global.jwt.InvalidTokenException;
@@ -25,6 +26,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalidToken(InvalidTokenException e) {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(new ErrorResponse("INVALID_TOKEN", e.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedProviderException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedProvider(UnsupportedProviderException e) {
+        return ResponseEntity.badRequest()
+            .body(new ErrorResponse("UNSUPPORTED_PROVIDER", e.getMessage()));
     }
 
     @ExceptionHandler(WithdrawnUserException.class)

@@ -2,8 +2,6 @@ package com.sago.domain.auth;
 
 import com.sago.domain.auth.dto.LoginResponse;
 import com.sago.domain.user.AuthProvider;
-import com.sago.domain.user.SocialAuth;
-import com.sago.domain.user.SocialAuthRepository;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.client.oauth.OAuthClient;
@@ -15,22 +13,26 @@ import com.sago.global.jwt.TokenType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * 소셜 로그인 분기(신규 가입 / 기존 회원 / 탈퇴 회원)와 토큰 재발급 동작을 검증한다.
+ * 로그인 분기(신규 가입 / 기존 회원 / 탈퇴 회원)와 토큰 재발급을 검증한다.
  * 외부 소셜 API는 고정된 사용자 정보를 돌려주는 가짜 클라이언트로 대체한다.
+ *
+ * 등록 시 유니크 제약 위반이 실제로 복구되는지는 트랜잭션 동작에 달린 문제라
+ * 여기서는 확인할 수 없다 — SocialAccountRegistrarTest에서 실제 DB로 검증한다.
  */
 class AuthServiceTest {
 
@@ -38,19 +40,15 @@ class AuthServiceTest {
     private static final OAuthUserInfo KAKAO_USER =
         new OAuthUserInfo("kakao-1234", "rider@example.com", "라이더");
 
+    private SocialAccountRegistrar registrar;
     private UserRepository userRepository;
-    private SocialAuthRepository socialAuthRepository;
     private JwtTokenProvider jwtTokenProvider;
     private AuthService authService;
 
-    /** save()가 실제 DB처럼 id를 채워주도록 하는 간단한 인메모리 대역. */
-    private final Map<Long, User> savedUsers = new HashMap<>();
-    private final AtomicLong userIdSequence = new AtomicLong();
-
     @BeforeEach
     void setUp() {
+        registrar = mock(SocialAccountRegistrar.class);
         userRepository = mock(UserRepository.class);
-        socialAuthRepository = mock(SocialAuthRepository.class);
 
         JwtProperties jwtProperties = new JwtProperties();
         jwtProperties.setSecret("test-only-secret-key-for-sago-backend-1234567890");
@@ -58,30 +56,20 @@ class AuthServiceTest {
         jwtProperties.setRefreshExpiration(1_209_600_000L);
         jwtTokenProvider = new JwtTokenProvider(jwtProperties);
 
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
-            User user = invocation.getArgument(0);
-            setUserId(user, userIdSequence.incrementAndGet());
-            savedUsers.put(user.getUserId(), user);
-            return user;
-        });
-        when(socialAuthRepository.saveAndFlush(any(SocialAuth.class)))
-            .thenAnswer(invocation -> invocation.getArgument(0));
-
         OAuthClient kakaoClient = new FakeOAuthClient(AuthProvider.KAKAO, KAKAO_USER);
-        authService = new AuthService(List.of(kakaoClient), userRepository, socialAuthRepository, jwtTokenProvider);
+        authService = new AuthService(
+            List.of(kakaoClient), registrar, userRepository, jwtTokenProvider);
     }
 
     @Test
-    @DisplayName("처음 보는 소셜 계정이면 회원을 새로 만들고 newUser=true로 알려준다")
+    @DisplayName("처음 보는 소셜 계정이면 회원을 등록하고 newUser=true로 알려준다")
     void firstLoginRegistersUser() {
-        when(socialAuthRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-1234"))
-            .thenReturn(Optional.empty());
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.empty());
+        when(registrar.register(eq(AuthProvider.KAKAO), any())).thenReturn(user(1L));
 
         LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
 
         assertThat(response.newUser()).isTrue();
-        assertThat(savedUsers).hasSize(1);
-        assertThat(savedUsers.values().iterator().next().getEmail()).isEqualTo("rider@example.com");
         assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
             .isEqualTo(1L);
     }
@@ -89,74 +77,71 @@ class AuthServiceTest {
     @Test
     @DisplayName("이미 연결된 소셜 계정이면 회원을 새로 만들지 않는다")
     void repeatedLoginReusesExistingUser() {
-        User existing = User.builder().email("rider@example.com").nickname("라이더").build();
-        setUserId(existing, 7L);
-        when(socialAuthRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-1234"))
-            .thenReturn(Optional.of(SocialAuth.builder()
-                .user(existing)
-                .provider(AuthProvider.KAKAO)
-                .providerUserId("kakao-1234")
-                .build()));
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234"))
+            .thenReturn(Optional.of(user(7L)));
 
         LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
 
         assertThat(response.newUser()).isFalse();
-        assertThat(savedUsers).isEmpty();
+        verify(registrar, never()).register(any(), any());
         assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
             .isEqualTo(7L);
     }
 
     @Test
+    @DisplayName("등록 중 제약 위반이 나면 먼저 커밋된 회원으로 로그인시킨다")
+    void duplicateRegistrationFallsBackToExistingUser() {
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234"))
+            .thenReturn(Optional.empty())
+            .thenReturn(Optional.of(user(7L)));
+        when(registrar.register(eq(AuthProvider.KAKAO), any()))
+            .thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
+
+        assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
+            .isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("제약 위반 후에도 회원을 못 찾으면 원래 예외를 그대로 올린다")
+    void unrecoverableConstraintViolationIsRethrown() {
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.empty());
+        when(registrar.register(eq(AuthProvider.KAKAO), any()))
+            .thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        assertThatThrownBy(() -> authService.login(AuthProvider.KAKAO, CODE))
+            .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     @DisplayName("탈퇴한 회원은 다시 로그인할 수 없다")
     void withdrawnUserCannotLogin() {
-        User withdrawn = User.builder().email("rider@example.com").nickname("라이더").build();
-        setUserId(withdrawn, 7L);
+        User withdrawn = user(7L);
         withdrawn.withdraw();
-        when(socialAuthRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-1234"))
-            .thenReturn(Optional.of(SocialAuth.builder()
-                .user(withdrawn)
-                .provider(AuthProvider.KAKAO)
-                .providerUserId("kakao-1234")
-                .build()));
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234"))
+            .thenReturn(Optional.of(withdrawn));
 
         assertThatThrownBy(() -> authService.login(AuthProvider.KAKAO, CODE))
             .isInstanceOf(WithdrawnUserException.class);
     }
 
     @Test
-    @DisplayName("이메일 동의를 받지 못한 소셜 계정도 가입이 되도록 대체 주소를 채운다")
-    void registersEvenWhenProviderGivesNoEmail() {
-        OAuthClient noEmailClient = new FakeOAuthClient(
-            AuthProvider.KAKAO, new OAuthUserInfo("kakao-9999", null, null));
-        AuthService service = new AuthService(
-            List.of(noEmailClient), userRepository, socialAuthRepository, jwtTokenProvider);
-        when(socialAuthRepository.findByProviderAndProviderUserId(AuthProvider.KAKAO, "kakao-9999"))
-            .thenReturn(Optional.empty());
-
-        service.login(AuthProvider.KAKAO, CODE);
-
-        assertThat(savedUsers.values().iterator().next().getEmail())
-            .isEqualTo("kakao_kakao-9999@social.sago");
-    }
-
-    @Test
     @DisplayName("등록되지 않은 제공자로 로그인하면 거부된다")
     void unsupportedProviderIsRejected() {
         assertThatThrownBy(() -> authService.login(AuthProvider.GOOGLE, CODE))
-            .isInstanceOf(IllegalArgumentException.class);
+            .isInstanceOf(UnsupportedProviderException.class);
     }
 
     @Test
     @DisplayName("refresh 토큰으로 새 토큰을 재발급받는다")
     void reissueWithRefreshToken() {
-        User user = User.builder().email("rider@example.com").nickname("라이더").build();
-        setUserId(user, 7L);
-        when(userRepository.findByUserIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(user));
+        when(userRepository.findByUserIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(user(7L)));
 
         String refreshToken = jwtTokenProvider.createRefreshToken(7L);
 
-        assertThat(jwtTokenProvider.parseUserId(authService.reissue(refreshToken).accessToken(), TokenType.ACCESS))
-            .isEqualTo(7L);
+        assertThat(jwtTokenProvider.parseUserId(
+            authService.reissue(refreshToken).accessToken(), TokenType.ACCESS)).isEqualTo(7L);
     }
 
     @Test
@@ -180,7 +165,8 @@ class AuthServiceTest {
     }
 
     /** userId는 DB가 채우는 값이라 테스트에서는 리플렉션으로 직접 넣는다. */
-    private void setUserId(User user, Long userId) {
+    private User user(Long userId) {
+        User user = User.builder().email("rider@example.com").nickname("라이더").build();
         try {
             var field = User.class.getDeclaredField("userId");
             field.setAccessible(true);
@@ -188,6 +174,7 @@ class AuthServiceTest {
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
         }
+        return user;
     }
 
     private record FakeOAuthClient(AuthProvider provider, OAuthUserInfo userInfo) implements OAuthClient {

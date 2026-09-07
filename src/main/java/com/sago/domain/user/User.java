@@ -27,6 +27,13 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {
 
+    /**
+     * 소셜에서 이메일 동의를 받지 못했을 때 채워 넣는 자리표시 주소의 도메인.
+     * 실재하지 않는 도메인이라 이 주소로는 메일이 가지 않는다 —
+     * 알림 발송이나 화면 노출 전에 hasPlaceholderEmail()로 걸러야 한다.
+     */
+    public static final String PLACEHOLDER_EMAIL_DOMAIN = "@social.sago";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "user_id")
@@ -74,5 +81,15 @@ public class User {
 
     public boolean isWithdrawn() {
         return this.deletedAt != null;
+    }
+
+    /**
+     * 이메일이 실제 주소가 아니라 가입 시 채워 넣은 자리표시 값인지 여부.
+     *
+     * 메일 발송이나 화면 노출 전에 이 값을 확인해야 한다. 자리표시 주소로 보낸 메일은
+     * 오류 없이 조용히 사라지고, 화면에 그대로 뜨면 사용자가 자기 이메일로 오해한다.
+     */
+    public boolean hasPlaceholderEmail() {
+        return this.email != null && this.email.endsWith(PLACEHOLDER_EMAIL_DOMAIN);
     }
 }

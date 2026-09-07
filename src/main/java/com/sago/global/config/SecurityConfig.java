@@ -6,14 +6,19 @@ import com.sago.global.jwt.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * 시큐리티 설정. 세션을 쓰지 않고 요청마다 JWT로 인증한다.
@@ -24,17 +29,24 @@ import java.nio.charset.StandardCharsets;
 @Configuration
 public class SecurityConfig {
 
+    private static final long CORS_PREFLIGHT_MAX_AGE_SECONDS = 3600;
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CorsProperties corsProperties;
     private final ObjectMapper objectMapper;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                          CorsProperties corsProperties,
+                          ObjectMapper objectMapper) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.corsProperties = corsProperties;
         this.objectMapper = objectMapper;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .formLogin(form -> form.disable())
             .httpBasic(basic -> basic.disable())
@@ -52,6 +64,26 @@ public class SecurityConfig {
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * 프론트엔드가 별도 오리진에서 뜨므로 CORS 허용이 필요하다.
+     * csrf.disable()과는 별개 문제로, 이게 없으면 브라우저가 preflight 단계에서 요청을 막는다.
+     *
+     * 오리진은 와일드카드가 아니라 목록으로 명시한다. 자격 증명을 함께 보내지는 않지만,
+     * 아무 사이트에서나 이 API를 브라우저로 호출할 수 있게 열어둘 이유가 없다.
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        configuration.setAllowedOrigins(corsProperties.getAllowedOrigins());
+        configuration.setAllowedMethods(List.of("GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
+        configuration.setMaxAge(CORS_PREFLIGHT_MAX_AGE_SECONDS);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 
     /**

@@ -3,8 +3,6 @@ package com.sago.domain.auth;
 import com.sago.domain.auth.dto.LoginResponse;
 import com.sago.domain.auth.dto.TokenResponse;
 import com.sago.domain.user.AuthProvider;
-import com.sago.domain.user.SocialAuth;
-import com.sago.domain.user.SocialAuthRepository;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.client.oauth.OAuthClient;
@@ -19,46 +17,49 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Step 1 — 소셜 로그인/회원가입 (FR-01).
  *
  * 소셜 인가 코드를 받아 사용자 정보를 조회하고, 처음 보는 소셜 계정이면 회원을 만든 뒤
  * 서비스 자체 JWT를 발급한다. 별도의 회원가입 API를 두지 않고 최초 로그인이 곧 가입이다.
+ *
+ * login()에는 트랜잭션을 걸지 않는다. 소셜 서버 호출이 느릴 때 그 시간만큼 DB 커넥션을
+ * 붙잡지 않기 위해서다. DB 작업은 SocialAccountRegistrar가 짧은 트랜잭션으로 나눠 처리한다.
  */
 @Service
 public class AuthService {
 
     private final Map<AuthProvider, OAuthClient> oAuthClients = new EnumMap<>(AuthProvider.class);
+    private final SocialAccountRegistrar socialAccountRegistrar;
     private final UserRepository userRepository;
-    private final SocialAuthRepository socialAuthRepository;
     private final JwtTokenProvider jwtTokenProvider;
 
     public AuthService(List<OAuthClient> oAuthClients,
+                       SocialAccountRegistrar socialAccountRegistrar,
                        UserRepository userRepository,
-                       SocialAuthRepository socialAuthRepository,
                        JwtTokenProvider jwtTokenProvider) {
         oAuthClients.forEach(client -> this.oAuthClients.put(client.getProvider(), client));
+        this.socialAccountRegistrar = socialAccountRegistrar;
         this.userRepository = userRepository;
-        this.socialAuthRepository = socialAuthRepository;
         this.jwtTokenProvider = jwtTokenProvider;
     }
 
-    @Transactional
     public LoginResponse login(AuthProvider provider, String authorizationCode) {
         OAuthClient client = oAuthClients.get(provider);
         if (client == null) {
-            throw new IllegalArgumentException("지원하지 않는 소셜 로그인입니다: " + provider);
+            throw new UnsupportedProviderException("지원하지 않는 소셜 로그인입니다: " + provider);
         }
 
+        // 외부 HTTP 호출. 트랜잭션 밖에서 끝낸다.
         OAuthUserInfo userInfo = client.fetchUserInfo(authorizationCode);
 
-        SocialAuth socialAuth = socialAuthRepository
-            .findByProviderAndProviderUserId(provider, userInfo.providerUserId())
-            .orElse(null);
+        Optional<User> existing =
+            socialAccountRegistrar.findUser(provider, userInfo.providerUserId());
 
-        boolean newUser = (socialAuth == null);
-        User user = newUser ? register(provider, userInfo) : socialAuth.getUser();
+        boolean newUser = existing.isEmpty();
+        User user = existing.orElseGet(() -> registerOrRecover(provider, userInfo));
 
         // 탈퇴 회원은 로그인을 막는다. soft delete라 사고 기록이 남아 있어 그냥 통과시키면
         // 탈퇴한 계정으로 기존 데이터에 다시 접근하게 된다. 복구 정책은 팀 논의 후 정할 것.
@@ -70,43 +71,17 @@ public class AuthService {
     }
 
     /**
-     * 최초 로그인 시 회원과 소셜 연결 정보를 함께 만든다.
-     *
-     * 유니크 제약 위반은 같은 소셜 계정으로 동시에 두 번 로그인이 들어온 경우다.
-     * 이때는 먼저 커밋된 쪽을 정답으로 보고 그 회원을 다시 조회해 돌려준다.
+     * 같은 소셜 계정으로 동시에 두 번 로그인이 들어오면 유니크 제약에 걸린다.
+     * 이때는 먼저 커밋된 쪽을 정답으로 보고 새 트랜잭션에서 다시 조회한다 —
+     * 등록 트랜잭션은 이미 롤백되었으므로 재조회는 깨끗한 상태에서 이뤄진다.
      */
-    private User register(AuthProvider provider, OAuthUserInfo userInfo) {
-        User user = userRepository.save(User.builder()
-            .email(resolveEmail(provider, userInfo))
-            .nickname(userInfo.nickname())
-            .build());
-
+    private User registerOrRecover(AuthProvider provider, OAuthUserInfo userInfo) {
         try {
-            socialAuthRepository.saveAndFlush(SocialAuth.builder()
-                .user(user)
-                .provider(provider)
-                .providerUserId(userInfo.providerUserId())
-                .build());
+            return socialAccountRegistrar.register(provider, userInfo);
         } catch (DataIntegrityViolationException e) {
-            return socialAuthRepository
-                .findByProviderAndProviderUserId(provider, userInfo.providerUserId())
-                .orElseThrow(() -> e)
-                .getUser();
+            return socialAccountRegistrar.findUser(provider, userInfo.providerUserId())
+                .orElseThrow(() -> e);
         }
-
-        return user;
-    }
-
-    /**
-     * 카카오는 이메일이 선택 동의 항목이라 내려오지 않을 수 있다.
-     * email 컬럼이 NOT NULL이므로 제공자 식별자를 이용한 자리표시 주소를 채워두고,
-     * 이후 프로필 설정에서 실제 주소를 받는다.
-     */
-    private String resolveEmail(AuthProvider provider, OAuthUserInfo userInfo) {
-        if (userInfo.email() != null && !userInfo.email().isBlank()) {
-            return userInfo.email();
-        }
-        return provider.name().toLowerCase() + "_" + userInfo.providerUserId() + "@social.sago";
     }
 
     /**
