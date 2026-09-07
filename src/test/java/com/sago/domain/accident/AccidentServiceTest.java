@@ -62,6 +62,29 @@ class AccidentServiceTest {
     }
 
     @Test
+    @DisplayName("미래 시각으로 사고를 만들 수 없다")
+    void futureOccurredAtIsRejected() {
+        when(userRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(owner));
+
+        assertThatThrownBy(() -> accidentService.create(
+            1L, request(LocalDateTime.now().plusHours(1))))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        verify(accidentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("시계 오차 범위(5분) 안의 미래 시각은 허용한다")
+    void slightlyFutureOccurredAtIsAcceptedForClockSkew() {
+        when(userRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.of(owner));
+        LocalDateTime slightlyAhead = LocalDateTime.now().plusMinutes(1);
+
+        var response = accidentService.create(1L, request(slightlyAhead));
+
+        assertThat(response.occurredAt()).isEqualTo(slightlyAhead);
+    }
+
+    @Test
     @DisplayName("탈퇴한 회원은 사고를 생성할 수 없다")
     void withdrawnUserCannotCreateAccident() {
         when(userRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
