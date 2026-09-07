@@ -128,12 +128,14 @@ public class S3Uploader {
      * 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
      */
     private void deleteAllQuietly(List<String> fileUrls) {
-        for (String fileUrl : fileUrls) {
-            try {
-                delete(fileUrl);
-            } catch (RuntimeException e) {
-                log.warn("업로드 롤백 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
-            }
+        fileUrls.forEach(this::deleteQuietly);
+    }
+
+    private void deleteQuietly(String fileUrl) {
+        try {
+            delete(fileUrl);
+        } catch (RuntimeException e) {
+            log.warn("업로드 롤백 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
         }
     }
 
@@ -150,6 +152,10 @@ public class S3Uploader {
                     .build(),
                 RequestBody.fromBytes(bytes));
         } catch (Exception e) {
+            // putObject가 객체를 저장한 뒤 응답 처리 단계에서 실패했을 수 있다.
+            // 그 경우 호출자는 URL을 돌려받지 못해 지울 방법이 없으므로 여기서 정리한다.
+            // 실제로 저장되지 않았다면 없는 키를 지우는 셈인데, S3는 이를 성공으로 처리한다.
+            deleteQuietly(toUrl(key));
             throw new S3UploadException("S3 업로드 실패: " + key, e);
         }
 

@@ -68,8 +68,8 @@ class S3UploaderTest {
             .isInstanceOf(S3UploadException.class)
             .hasCause(failure);
 
-        // 첫 장만 올라갔으므로 삭제도 한 번
-        verify(s3Client, times(1)).deleteObject(any(DeleteObjectRequest.class));
+        // 성공한 1장 + putObject가 터진 2장째(저장 후 응답 실패 가능성)까지 정리
+        verify(s3Client, times(2)).deleteObject(any(DeleteObjectRequest.class));
     }
 
     @Test
@@ -123,6 +123,38 @@ class S3UploaderTest {
 
         assertThat(urls).hasSize(maxCount);
         verify(s3Client, times(maxCount)).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    @DisplayName("putObject가 터지면 단건 업로드도 해당 객체를 정리한다")
+    void cleansUpWhenSingleUploadFails() {
+        S3Exception failure = (S3Exception) S3Exception.builder().message("응답 처리 실패").build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+            .thenThrow(failure);
+
+        assertThatThrownBy(() -> s3Uploader.upload(photo("photo.jpg"), FileCategory.ACCIDENT_PHOTO))
+            .isInstanceOf(S3UploadException.class)
+            .hasCause(failure);
+
+        // 객체가 저장된 뒤 응답에서 터졌을 수 있으므로, 호출자가 URL을 못 받는 이 경로에서 직접 정리한다
+        ArgumentCaptor<DeleteObjectRequest> captor = ArgumentCaptor.forClass(DeleteObjectRequest.class);
+        verify(s3Client, times(1)).deleteObject(captor.capture());
+        assertThat(captor.getValue().key())
+            .startsWith(FileCategory.ACCIDENT_PHOTO.getDirectory() + "/");
+    }
+
+    @Test
+    @DisplayName("정리 삭제가 실패해도 원래 업로드 예외를 전파한다")
+    void keepsUploadExceptionWhenCleanupDeleteFails() {
+        S3Exception uploadFailure = (S3Exception) S3Exception.builder().message("업로드 실패").build();
+        when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+            .thenThrow(uploadFailure);
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+            .thenThrow(S3Exception.builder().message("삭제 실패").build());
+
+        assertThatThrownBy(() -> s3Uploader.upload(photo("photo.jpg"), FileCategory.ACCIDENT_PHOTO))
+            .isInstanceOf(S3UploadException.class)
+            .hasCause(uploadFailure);
     }
 
     @Test
