@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -58,6 +59,8 @@ public class SecurityConfig {
                 // 로그인·토큰 재발급은 아직 토큰이 없는 상태에서 호출하므로 열어둔다
                 .requestMatchers("/auth/social/*/callback").permitAll()
                 .requestMatchers("/api/auth/social/*", "/api/auth/reissue").permitAll()
+                // 약관 목록은 가입 전에도 확인할 수 있어야 한다 (동의 저장은 인증 필요)
+                .requestMatchers(HttpMethod.GET, "/api/terms").permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(handler -> handler.authenticationEntryPoint(unauthorizedEntryPoint()))

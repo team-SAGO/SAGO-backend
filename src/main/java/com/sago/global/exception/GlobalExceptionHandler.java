@@ -2,6 +2,7 @@ package com.sago.global.exception;
 
 import com.sago.domain.auth.UnsupportedProviderException;
 import com.sago.domain.auth.WithdrawnUserException;
+import com.sago.domain.terms.RequiredTermsNotAgreedException;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.global.client.oauth.OAuthApiException;
 import com.sago.global.jwt.InvalidTokenException;
@@ -39,6 +40,17 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(new ErrorResponse("USER_NOT_FOUND", e.getMessage()));
+    }
+
+    /**
+     * 필수 약관 미동의. 요청 형식은 올바르므로 400이 아니라 422로 내려, 클라이언트가
+     * "입력값이 잘못됨"과 "동의가 부족함"을 구분해 안내할 수 있게 한다.
+     */
+    @ExceptionHandler(RequiredTermsNotAgreedException.class)
+    public ResponseEntity<ErrorResponse> handleRequiredTermsNotAgreed(
+        RequiredTermsNotAgreedException e) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            .body(new ErrorResponse("REQUIRED_TERMS_NOT_AGREED", e.getMessage()));
     }
 
     @ExceptionHandler(WithdrawnUserException.class)

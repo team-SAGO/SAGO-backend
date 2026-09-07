@@ -1,0 +1,40 @@
+# 동의받을 약관 목록.
+#
+# 코드가 아니라 이 파일에서 관리한다. 약관의 종류·필수 여부·버전은 기획·법률 검토로
+# 바뀌는 값이고, 그때마다 코드를 고쳐야 한다면 배포 없이 대응할 수 없기 때문이다.
+#
+# DB(terms_agreement)에는 "누가 언제 어느 버전에 동의했는지"만 남는다.
+#
+# 약관을 개정하면 version을 올린다. 그러면 기존 사용자가 동의한 버전과 달라지고,
+# GET /api/terms/agreements 가 재동의 필요로 표시한다.
+#
+# TODO(기획/법무): 아래는 항목 구성만 잡아둔 초안입니다.
+#                  실제 약관 문안과 게시 URL은 법률 검토 후 채워주세요.
+#                  content-url이 비어 있으면 사용자가 약관 전문을 볼 수 없습니다.
+
+terms:
+  documents:
+    - type: SERVICE
+      required: true
+      version: "1.0"
+      title: 서비스 이용약관
+      content-url: ""
+
+    - type: PRIVACY
+      required: true
+      version: "1.0"
+      title: 개인정보 수집·이용 동의
+      content-url: ""
+
+    # 사고 위치(위경도)를 수집·저장하므로 위치기반서비스 동의가 별도로 필요하다.
+    - type: LOCATION
+      required: true
+      version: "1.0"
+      title: 위치기반서비스 이용 동의
+      content-url: ""
+
+    - type: MARKETING
+      required: false
+      version: "1.0"
+      title: 광고성 정보 수신 동의
+      content-url: ""
