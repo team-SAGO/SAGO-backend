@@ -65,6 +65,28 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("지역명이 붙어 공백이 있는 차량번호도 저장된다")
+    void bikeNumberWithSpaceIsAccepted() {
+        givenUser(User.builder().email("rider@example.com").build());
+
+        ProfileResponse response = userService.updateProfile(
+            1L, new ProfileUpdateRequest("라이더", null, "서울강남 가1234"));
+
+        assertThat(response.bikeNumber()).isEqualTo("서울강남 가1234");
+    }
+
+    @Test
+    @DisplayName("차량번호의 앞뒤 공백과 중복 공백은 정리해서 저장한다")
+    void bikeNumberSpacingIsNormalized() {
+        givenUser(User.builder().email("rider@example.com").build());
+
+        ProfileResponse response = userService.updateProfile(
+            1L, new ProfileUpdateRequest("라이더", null, "  서울강남   가1234  "));
+
+        assertThat(response.bikeNumber()).isEqualTo("서울강남 가1234");
+    }
+
+    @Test
     @DisplayName("자리표시 이메일은 응답에서 null로 내려간다")
     void placeholderEmailIsHiddenFromResponse() {
         givenUser(User.builder()

@@ -28,8 +28,25 @@ public class UserService {
     @Transactional
     public ProfileResponse updateProfile(Long userId, ProfileUpdateRequest request) {
         User user = findActiveUser(userId);
-        user.updateProfile(request.nickname(), request.bikeModel(), request.bikeNumber());
+        user.updateProfile(
+            request.nickname(),
+            request.bikeModel(),
+            normalizeBikeNumber(request.bikeNumber()));
         return ProfileResponse.from(user);
+    }
+
+    /**
+     * 차량번호의 공백 표기를 하나로 맞춘다.
+     *
+     * 번호판을 "서울강남 가1234"처럼 띄어 쓰는 사람과 붙여 쓰는 사람이 섞여 있어,
+     * 입력을 넓게 받되 저장 형태는 통일한다. 그러지 않으면 같은 번호판이 여러 표기로 남아
+     * 나중에 번호로 조회하거나 대조할 때 어긋난다.
+     */
+    private String normalizeBikeNumber(String bikeNumber) {
+        if (bikeNumber == null) {
+            return null;
+        }
+        return bikeNumber.trim().replaceAll("\\s+", " ");
     }
 
     private User findActiveUser(Long userId) {
