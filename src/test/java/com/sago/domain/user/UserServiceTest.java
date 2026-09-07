@@ -65,6 +65,25 @@ class UserServiceTest {
     }
 
     @Test
+    @DisplayName("자리표시 이메일은 응답에서 null로 내려간다")
+    void placeholderEmailIsHiddenFromResponse() {
+        givenUser(User.builder()
+            .email("kakao_1234" + User.PLACEHOLDER_EMAIL_DOMAIN)
+            .nickname("라이더")
+            .build());
+
+        assertThat(userService.getProfile(1L).email()).isNull();
+    }
+
+    @Test
+    @DisplayName("실제 이메일은 그대로 내려간다")
+    void realEmailIsReturned() {
+        givenUser(User.builder().email("rider@example.com").nickname("라이더").build());
+
+        assertThat(userService.getProfile(1L).email()).isEqualTo("rider@example.com");
+    }
+
+    @Test
     @DisplayName("탈퇴한 회원의 프로필은 조회되지 않는다")
     void withdrawnUserProfileIsNotFound() {
         when(userRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
