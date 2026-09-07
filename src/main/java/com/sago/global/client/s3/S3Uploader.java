@@ -1,5 +1,6 @@
 package com.sago.global.client.s3;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
@@ -10,6 +11,8 @@ import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -22,6 +25,7 @@ import java.util.UUID;
  *
  * 버킷은 비공개를 전제로 하며, 조회용 presigned URL 발급은 다운로드 기능 붙일 때 추가한다.
  */
+@Slf4j
 @Component
 public class S3Uploader {
 
@@ -49,6 +53,35 @@ public class S3Uploader {
         } catch (IOException e) {
             throw new S3UploadException("업로드 파일을 읽지 못했습니다", e);
         }
+    }
+
+    /**
+     * 여러 파일을 한 번에 업로드하고 저장된 URL을 요청 순서대로 돌려준다.
+     * 사고 현장 사진·첨부 문서처럼 여러 장을 함께 올리는 기능이 사용한다.
+     *
+     * 확장자·용량·개수는 네트워크를 타기 전에 판별할 수 있으므로 한 장도 올리기 전에 전부 검사한다.
+     * 마지막 파일의 확장자 때문에 앞의 파일들을 올렸다 지우는 낭비를 막기 위해서다.
+     *
+     * 그럼에도 업로드 도중 실패(네트워크·권한 등)는 남으므로, 그때는 이미 올라간 파일을 모두 지운다.
+     * 일부만 올라간 채로 두면 S3에는 파일이 있는데 DB에는 기록이 없는 고아 파일이 남기 때문이다.
+     */
+    public List<String> uploadAll(List<MultipartFile> files, FileCategory category) {
+        if (files == null || files.isEmpty()) {
+            throw new S3UploadException("업로드할 파일 목록이 비어 있습니다");
+        }
+        category.validateCount(files.size());
+        files.forEach(file -> validateBeforeUpload(file, category));
+
+        List<String> uploadedUrls = new ArrayList<>(files.size());
+        try {
+            for (MultipartFile file : files) {
+                uploadedUrls.add(upload(file, category));
+            }
+        } catch (RuntimeException e) {
+            deleteAllQuietly(uploadedUrls);
+            throw e;
+        }
+        return uploadedUrls;
     }
 
     /**
@@ -80,6 +113,32 @@ public class S3Uploader {
         }
     }
 
+    /**
+     * 업로드를 시작하기 전에 판별 가능한 항목을 미리 검사한다.
+     */
+    private void validateBeforeUpload(MultipartFile file, FileCategory category) {
+        if (file == null || file.isEmpty()) {
+            throw new S3UploadException("업로드할 파일이 없습니다");
+        }
+        category.validate(extractExtension(file.getOriginalFilename()), file.getSize());
+    }
+
+    /**
+     * 되돌리기용 삭제. 여기서 터진 예외로 원래 실패 원인이 가려지면 안 되므로 삼키되,
+     * 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
+     */
+    private void deleteAllQuietly(List<String> fileUrls) {
+        fileUrls.forEach(this::deleteQuietly);
+    }
+
+    private void deleteQuietly(String fileUrl) {
+        try {
+            delete(fileUrl);
+        } catch (RuntimeException e) {
+            log.warn("업로드 롤백 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
+        }
+    }
+
     private String put(byte[] bytes, String extension, String contentType, FileCategory category) {
         String key = category.getDirectory() + "/" + UUID.randomUUID() + "." + extension;
 
@@ -93,6 +152,10 @@ public class S3Uploader {
                     .build(),
                 RequestBody.fromBytes(bytes));
         } catch (Exception e) {
+            // putObject가 객체를 저장한 뒤 응답 처리 단계에서 실패했을 수 있다.
+            // 그 경우 호출자는 URL을 돌려받지 못해 지울 방법이 없으므로 여기서 정리한다.
+            // 실제로 저장되지 않았다면 없는 키를 지우는 셈인데, S3는 이를 성공으로 처리한다.
+            deleteQuietly(toUrl(key));
             throw new S3UploadException("S3 업로드 실패: " + key, e);
         }
 
