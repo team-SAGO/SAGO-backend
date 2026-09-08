@@ -4,6 +4,7 @@ import com.sago.domain.accident.Accident;
 import com.sago.global.client.s3.FileCategory;
 import com.sago.global.client.s3.S3UploadException;
 import com.sago.global.client.s3.S3Uploader;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,6 +22,7 @@ import java.io.IOException;
  * DB 저장은 {@link StatementService#transcribe}가 자체 트랜잭션으로 처리하고,
  * 저장이 실패하면 여기서 업로드된 파일을 지워 고아 파일을 남기지 않는다.
  */
+@Slf4j
 @Service
 public class StatementUploadService {
 
@@ -66,13 +68,14 @@ public class StatementUploadService {
     }
 
     /**
-     * 되돌리기용 삭제. 여기서 발생한 예외 때문에 원래 실패 원인이 가려지면 안 되므로 삼킨다.
+     * 되돌리기용 삭제. 여기서 발생한 예외 때문에 원래 실패 원인이 가려지면 안 되므로 삼키되,
+     * 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
      */
     private void deleteQuietly(String fileUrl) {
         try {
             s3Uploader.delete(fileUrl);
-        } catch (RuntimeException ignored) {
-            // 삭제 실패 시 S3에 고아 파일이 남지만, 호출자에게는 원래 예외를 그대로 전달한다
+        } catch (RuntimeException e) {
+            log.warn("업로드 롤백 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
         }
     }
 }
