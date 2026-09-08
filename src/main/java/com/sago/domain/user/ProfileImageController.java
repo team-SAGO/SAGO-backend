@@ -1,6 +1,7 @@
 package com.sago.domain.user;
 
 import com.sago.domain.user.dto.ProfileResponse;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,7 +25,8 @@ public class ProfileImageController {
         this.profileImageService = profileImageService;
     }
 
-    @PostMapping
+    // Content-Type을 명시해 다른 형식으로 오면 415가 나가도록 한다. 원인이 분명해진다.
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ProfileResponse uploadProfileImage(@AuthenticationPrincipal Long userId,
                                               @RequestPart("image") MultipartFile image) {
         return profileImageService.upload(userId, image);
