@@ -15,8 +15,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -92,6 +94,75 @@ class AccidentControllerTest {
         assertThat(saved.get(0).isOwnedBy(userId)).isTrue();
         assertThat(saved.get(0).getMemo()).isEqualTo("신호 대기 중 추돌");
         assertThat(saved.get(0).getInjurySelf()).isEqualTo(InjuryLevel.MINOR);
+    }
+
+    @Test
+    @DisplayName("사고 이력에는 내 사고만, 최신순으로 나온다")
+    void historyContainsOnlyMyAccidentsInRecentOrder() throws Exception {
+        User stranger = userRepository.save(User.builder().email("other@example.com").build());
+        accidentRepository.save(accident(user(), LocalDateTime.of(2026, 9, 1, 10, 0)));
+        accidentRepository.save(accident(user(), LocalDateTime.of(2026, 9, 5, 10, 0)));
+        accidentRepository.save(accident(stranger, LocalDateTime.of(2026, 9, 6, 10, 0)));
+
+        mockMvc.perform(get("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].occurredAt").value(org.hamcrest.Matchers.startsWith("2026-09-05")))
+            .andExpect(jsonPath("$[1].occurredAt").value(org.hamcrest.Matchers.startsWith("2026-09-01")));
+    }
+
+    @Test
+    @DisplayName("토큰 없이 사고 이력을 볼 수 없다")
+    void historyRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/accidents"))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("내 사고 상세는 조회된다")
+    void detailOfMyAccident() throws Exception {
+        Long id = accidentRepository.save(accident(user(), LocalDateTime.of(2026, 9, 5, 10, 0)))
+            .getAccidentId();
+
+        mockMvc.perform(get("/api/accidents/{id}", id)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accidentId").value(id))
+            .andExpect(jsonPath("$.status").value("IN_PROGRESS"));
+    }
+
+    @Test
+    @DisplayName("남의 사고 상세는 404다")
+    void detailOfOthersAccidentIsNotFound() throws Exception {
+        User stranger = userRepository.save(User.builder().email("other@example.com").build());
+        Long id = accidentRepository.save(accident(stranger, LocalDateTime.now())).getAccidentId();
+
+        mockMvc.perform(get("/api/accidents/{id}", id)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ACCIDENT_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("없는 사고를 조회해도 같은 404가 나온다")
+    void unknownAccidentIsNotFound() throws Exception {
+        mockMvc.perform(get("/api/accidents/{id}", 999999L)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ACCIDENT_NOT_FOUND"));
+    }
+
+    private User user() {
+        return userRepository.findById(userId).orElseThrow();
+    }
+
+    private Accident accident(User owner, LocalDateTime occurredAt) {
+        return Accident.builder()
+            .user(owner)
+            .accidentType(AccidentType.VEHICLE)
+            .occurredAt(occurredAt)
+            .build();
     }
 
     @Test
