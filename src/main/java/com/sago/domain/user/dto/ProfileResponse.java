@@ -11,6 +11,7 @@ import com.sago.domain.user.User;
  * @param nickname    닉네임. 초기 설정 전에는 소셜에서 받아온 값이거나 null이다.
  * @param bikeModel   이륜차 차종
  * @param bikeNumber  이륜차 번호
+ * @param profileImageUrl 프로필 이미지 주소. 올린 적이 없으면 null이다.
  * @param profileSet  초기 프로필 설정을 마쳤는지 여부. 클라이언트가 온보딩으로 보낼지 판단하는 데 쓴다.
  */
 public record ProfileResponse(
@@ -19,6 +20,7 @@ public record ProfileResponse(
     String nickname,
     String bikeModel,
     String bikeNumber,
+    String profileImageUrl,
     boolean profileSet
 ) {
 
@@ -30,6 +32,7 @@ public record ProfileResponse(
             user.getNickname(),
             user.getBikeModel(),
             user.getBikeNumber(),
+            user.getProfileImageUrl(),
             user.isProfileSet()
         );
     }

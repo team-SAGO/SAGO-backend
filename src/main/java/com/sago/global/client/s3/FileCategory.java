@@ -27,7 +27,13 @@ public enum FileCategory {
     DOCUMENT("documents", 10 * 1024 * 1024L, 5,
         Set.of("jpg", "jpeg", "png", "heic", "webp", "pdf")),
 
-    /** 프로필 이미지. */
+    /**
+     * 프로필 이미지.
+     *
+     * 사고 사진과 달리 heic를 허용하지 않는다. 프로필 이미지는 브라우저가 그대로 렌더링하는데
+     * heic를 표시하지 못하는 브라우저가 많아, 받아두면 화면에서 깨진 이미지가 된다.
+     * 아이폰 기본 촬영 포맷이 heic이므로 클라이언트가 변환해 보내야 한다.
+     */
     PROFILE_IMAGE("profiles", 5 * 1024 * 1024L, 1,
         Set.of("jpg", "jpeg", "png", "webp")),
 

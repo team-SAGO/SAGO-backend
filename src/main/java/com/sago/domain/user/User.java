@@ -51,6 +51,10 @@ public class User {
     @Column(name = "bike_number", length = 20)
     private String bikeNumber;
 
+    // S3에 올린 프로필 이미지 주소. 길이는 다른 파일 URL 컬럼(audio_file_url, file_url)과 맞췄다.
+    @Column(name = "profile_image_url", length = 512)
+    private String profileImageUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -93,6 +97,14 @@ public class User {
     public boolean isProfileSet() {
         return nickname != null && !nickname.isBlank()
             && bikeNumber != null && !bikeNumber.isBlank();
+    }
+
+    /**
+     * 프로필 이미지를 교체한다. 이전 이미지를 S3에서 지우는 것은 호출자의 몫이다 —
+     * 엔티티가 외부 저장소를 직접 건드리지 않도록 하기 위함이다.
+     */
+    public void updateProfileImage(String profileImageUrl) {
+        this.profileImageUrl = profileImageUrl;
     }
 
     public void withdraw() {
