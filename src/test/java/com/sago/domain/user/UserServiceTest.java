@@ -1,5 +1,6 @@
 package com.sago.domain.user;
 
+import com.sago.domain.auth.RefreshTokenStore;
 import com.sago.domain.user.dto.ProfileResponse;
 import com.sago.domain.user.dto.ProfileUpdateRequest;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,18 +11,23 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class UserServiceTest {
 
     private UserRepository userRepository;
+    private RefreshTokenStore refreshTokenStore;
     private UserService userService;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
-        userService = new UserService(userRepository);
+        refreshTokenStore = mock(RefreshTokenStore.class);
+        userService = new UserService(userRepository, refreshTokenStore);
     }
 
     @Test
@@ -103,6 +109,29 @@ class UserServiceTest {
         givenUser(User.builder().email("rider@example.com").nickname("라이더").build());
 
         assertThat(userService.getProfile(1L).email()).isEqualTo("rider@example.com");
+    }
+
+    @Test
+    @DisplayName("탈퇴하면 회원이 soft delete되고 토큰이 전부 무효화된다")
+    void withdrawSoftDeletesAndRevokesTokens() {
+        User user = User.builder().email("rider@example.com").nickname("라이더").build();
+        givenUser(user);
+
+        userService.withdraw(1L);
+
+        assertThat(user.isWithdrawn()).isTrue();
+        verify(refreshTokenStore).revokeAll(1L);
+    }
+
+    @Test
+    @DisplayName("이미 탈퇴한 회원은 다시 탈퇴할 수 없다")
+    void withdrawnUserCannotWithdrawAgain() {
+        when(userRepository.findByUserIdAndDeletedAtIsNull(1L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.withdraw(1L))
+            .isInstanceOf(UserNotFoundException.class);
+
+        verify(refreshTokenStore, never()).revokeAll(any());
     }
 
     @Test

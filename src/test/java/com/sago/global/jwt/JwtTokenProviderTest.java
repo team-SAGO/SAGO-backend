@@ -33,6 +33,21 @@ class JwtTokenProviderTest {
     }
 
     @Test
+    @DisplayName("같은 사용자에게 연속으로 발급해도 토큰이 서로 다르다")
+    void tokensAreUniqueEvenWhenIssuedInSameSecond() {
+        JwtTokenProvider provider = provider();
+
+        // iat·exp는 초 단위라, jti가 없으면 같은 초에 발급된 토큰이 완전히 같아진다.
+        // 그러면 refresh 토큰을 회전시켜도 새 토큰이 옛 토큰과 같아 무효화가 성립하지 않는다.
+        String first = provider.createRefreshToken(42L);
+        String second = provider.createRefreshToken(42L);
+
+        assertThat(first).isNotEqualTo(second);
+        assertThat(provider.parseUserId(first, TokenType.REFRESH)).isEqualTo(42L);
+        assertThat(provider.parseUserId(second, TokenType.REFRESH)).isEqualTo(42L);
+    }
+
+    @Test
     @DisplayName("refresh 토큰을 access 토큰 자리에 쓰면 거부된다")
     void refreshTokenCannotBeUsedAsAccessToken() {
         JwtTokenProvider provider = provider();

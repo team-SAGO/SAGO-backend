@@ -58,7 +58,7 @@ public class SecurityConfig {
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 // 로그인·토큰 재발급은 아직 토큰이 없는 상태에서 호출하므로 열어둔다
                 .requestMatchers("/auth/social/*/callback").permitAll()
-                .requestMatchers("/api/auth/social/*", "/api/auth/reissue").permitAll()
+                .requestMatchers("/api/auth/social/*", "/api/auth/reissue", "/api/auth/logout").permitAll()
                 // 약관 목록은 가입 전에도 확인할 수 있어야 한다 (동의 저장은 인증 필요)
                 .requestMatchers(HttpMethod.GET, "/api/terms").permitAll()
                 .anyRequest().authenticated()

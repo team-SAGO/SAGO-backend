@@ -1,6 +1,7 @@
 package com.sago.domain.auth;
 
 import com.sago.domain.auth.dto.LoginResponse;
+import com.sago.domain.auth.dto.TokenResponse;
 import com.sago.domain.user.AuthProvider;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
@@ -41,6 +42,7 @@ class AuthServiceTest {
         new OAuthUserInfo("kakao-1234", "rider@example.com", "라이더");
 
     private SocialAccountRegistrar registrar;
+    private RefreshTokenStore refreshTokenStore;
     private UserRepository userRepository;
     private JwtTokenProvider jwtTokenProvider;
     private AuthService authService;
@@ -48,6 +50,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         registrar = mock(SocialAccountRegistrar.class);
+        refreshTokenStore = mock(RefreshTokenStore.class);
         userRepository = mock(UserRepository.class);
 
         JwtProperties jwtProperties = new JwtProperties();
@@ -58,7 +61,9 @@ class AuthServiceTest {
 
         OAuthClient kakaoClient = new FakeOAuthClient(AuthProvider.KAKAO, KAKAO_USER);
         authService = new AuthService(
-            List.of(kakaoClient), registrar, userRepository, jwtTokenProvider);
+            List.of(kakaoClient), registrar, refreshTokenStore, userRepository, jwtTokenProvider);
+        // 저장소에 남아 있는 토큰인지 확인하는 단계는 기본적으로 통과시킨다.
+        when(refreshTokenStore.consume(any())).thenReturn(true);
     }
 
     @Test
@@ -142,6 +147,53 @@ class AuthServiceTest {
 
         assertThat(jwtTokenProvider.parseUserId(
             authService.reissue(refreshToken).accessToken(), TokenType.ACCESS)).isEqualTo(7L);
+    }
+
+    @Test
+    @DisplayName("이미 사용되었거나 무효화된 refresh 토큰은 거부된다")
+    void reissueRejectsRevokedToken() {
+        when(refreshTokenStore.consume(any())).thenReturn(false);
+
+        String refreshToken = jwtTokenProvider.createRefreshToken(7L);
+
+        assertThatThrownBy(() -> authService.reissue(refreshToken))
+            .isInstanceOf(InvalidTokenException.class)
+            .hasMessageContaining("무효화된");
+    }
+
+    @Test
+    @DisplayName("재발급하면 쓴 토큰은 버리고 새 토큰을 저장한다")
+    void reissueRotatesToken() {
+        User user = user(7L);
+        when(userRepository.findByUserIdAndDeletedAtIsNull(7L)).thenReturn(Optional.of(user));
+
+        String oldToken = jwtTokenProvider.createRefreshToken(7L);
+        TokenResponse response = authService.reissue(oldToken);
+
+        verify(refreshTokenStore).consume(oldToken);
+        verify(refreshTokenStore).save(user, response.refreshToken());
+    }
+
+    @Test
+    @DisplayName("로그인하면 발급된 refresh 토큰이 저장된다")
+    void loginStoresRefreshToken() {
+        User user = user(7L);
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.of(user));
+
+        LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
+
+        verify(refreshTokenStore).save(user, response.token().refreshToken());
+    }
+
+    @Test
+    @DisplayName("로그아웃하면 넘겨받은 토큰만 무효화된다")
+    void logoutRevokesOnlyGivenToken() {
+        String refreshToken = jwtTokenProvider.createRefreshToken(7L);
+
+        authService.logout(refreshToken);
+
+        verify(refreshTokenStore).consume(refreshToken);
+        verify(refreshTokenStore, never()).revokeAll(any());
     }
 
     @Test
