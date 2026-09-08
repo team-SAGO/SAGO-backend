@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -24,7 +25,13 @@ import java.time.LocalDateTime;
  * source로 AI 생성인지 정적 폴백인지 구분한다.
  */
 @Entity
-@Table(name = "checklist_item")
+@Table(
+    name = "checklist_item",
+    // 사고별 항목을 순서대로 읽는 조회가 화면 진입마다 일어난다.
+    indexes = @Index(
+        name = "idx_checklist_item_accident_order",
+        columnList = "accident_id, order_no")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChecklistItem {

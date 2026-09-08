@@ -29,6 +29,7 @@ class ChecklistServiceTest {
 
     private AccidentService accidentService;
     private ChecklistGenerationService generationService;
+    private ChecklistStore checklistStore;
     private ChecklistItemRepository checklistItemRepository;
     private ChecklistService checklistService;
 
@@ -38,9 +39,10 @@ class ChecklistServiceTest {
     void setUp() {
         accidentService = mock(AccidentService.class);
         generationService = mock(ChecklistGenerationService.class);
+        checklistStore = mock(ChecklistStore.class);
         checklistItemRepository = mock(ChecklistItemRepository.class);
         checklistService = new ChecklistService(
-            accidentService, generationService, checklistItemRepository);
+            accidentService, generationService, checklistStore, checklistItemRepository);
 
         accident = Accident.builder()
             .user(User.builder().email("rider@example.com").build())
@@ -55,10 +57,10 @@ class ChecklistServiceTest {
     @Test
     @DisplayName("항목이 없으면 첫 조회에서 생성한다")
     void generatesOnFirstFetch() {
-        when(checklistItemRepository.findByAccident_AccidentIdOrderByOrderNoAsc(ACCIDENT_ID))
-            .thenReturn(List.of());
-        when(generationService.generateChecklist(accident))
-            .thenReturn(List.of(item(100L, "119 신고하기", 1)));
+        List<ChecklistItem> generated = List.of(item(100L, "119 신고하기", 1));
+        when(checklistStore.findItems(ACCIDENT_ID)).thenReturn(List.of());
+        when(generationService.generateChecklist(accident)).thenReturn(generated);
+        when(checklistStore.saveIfAbsent(ACCIDENT_ID, generated)).thenReturn(generated);
 
         List<ChecklistItemResponse> response = checklistService.getOrGenerate(USER_ID, ACCIDENT_ID);
 
@@ -69,12 +71,28 @@ class ChecklistServiceTest {
     @Test
     @DisplayName("이미 항목이 있으면 다시 생성하지 않는다")
     void doesNotRegenerateWhenItemsExist() {
-        when(checklistItemRepository.findByAccident_AccidentIdOrderByOrderNoAsc(ACCIDENT_ID))
+        when(checklistStore.findItems(ACCIDENT_ID))
             .thenReturn(List.of(item(100L, "119 신고하기", 1)));
 
         checklistService.getOrGenerate(USER_ID, ACCIDENT_ID);
 
         verify(generationService, never()).generateChecklist(any());
+    }
+
+    @Test
+    @DisplayName("생성 도중 다른 요청이 먼저 저장했으면 그쪽 결과를 쓴다")
+    void losingRaceReturnsAlreadySavedItems() {
+        List<ChecklistItem> mine = List.of(item(100L, "내가 만든 항목", 1));
+        List<ChecklistItem> winner = List.of(item(200L, "먼저 저장된 항목", 1));
+        when(checklistStore.findItems(ACCIDENT_ID)).thenReturn(List.of());
+        when(generationService.generateChecklist(accident)).thenReturn(mine);
+        // saveIfAbsent가 락을 잡고 다시 확인해, 이미 있으면 기존 것을 돌려준다.
+        when(checklistStore.saveIfAbsent(ACCIDENT_ID, mine)).thenReturn(winner);
+
+        List<ChecklistItemResponse> response = checklistService.getOrGenerate(USER_ID, ACCIDENT_ID);
+
+        assertThat(response).hasSize(1);
+        assertThat(response.get(0).content()).isEqualTo("먼저 저장된 항목");
     }
 
     @Test

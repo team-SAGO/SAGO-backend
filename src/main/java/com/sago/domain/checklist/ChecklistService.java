@@ -11,21 +11,24 @@ import java.util.List;
 /**
  * Step 3 — 사고 대응 체크리스트 조회와 완료 저장 (FR-03).
  *
- * 체크리스트 생성 자체는 {@link ChecklistGenerationService}가 담당하고, 여기서는
- * 언제 생성할지와 누가 접근할 수 있는지를 정한다.
+ * 체크리스트 생성 자체는 {@link ChecklistGenerationService}가, DB 작업은
+ * {@link ChecklistStore}가 담당한다. 여기서는 언제 생성할지와 누가 접근할 수 있는지를 정한다.
  */
 @Service
 public class ChecklistService {
 
     private final AccidentService accidentService;
     private final ChecklistGenerationService checklistGenerationService;
+    private final ChecklistStore checklistStore;
     private final ChecklistItemRepository checklistItemRepository;
 
     public ChecklistService(AccidentService accidentService,
                             ChecklistGenerationService checklistGenerationService,
+                            ChecklistStore checklistStore,
                             ChecklistItemRepository checklistItemRepository) {
         this.accidentService = accidentService;
         this.checklistGenerationService = checklistGenerationService;
+        this.checklistStore = checklistStore;
         this.checklistItemRepository = checklistItemRepository;
     }
 
@@ -37,15 +40,18 @@ public class ChecklistService {
      *    그 시간을 기다리게 할 수 없다.
      * 2. 사고 생성이 나중에 "진행 중 사고가 있으면 그걸 반환"으로 바뀌어도(#34), 이미 항목이
      *    있으면 그대로 돌려주므로 중복 생성되지 않는다.
+     *
+     * 이 메서드에는 트랜잭션을 걸지 않는다. Gemini 호출이 중간에 있어서, 감싸버리면 응답이
+     * 느릴 때 그만큼 DB 커넥션을 붙잡는다. DB 작업은 ChecklistStore가 짧게 나눠 처리한다.
      */
-    @Transactional
     public List<ChecklistItemResponse> getOrGenerate(Long userId, Long accidentId) {
         Accident accident = accidentService.getOwnedAccident(userId, accidentId);
 
-        List<ChecklistItem> items =
-            checklistItemRepository.findByAccident_AccidentIdOrderByOrderNoAsc(accidentId);
+        List<ChecklistItem> items = checklistStore.findItems(accidentId);
         if (items.isEmpty()) {
-            items = checklistGenerationService.generateChecklist(accident);
+            // 외부 호출. 트랜잭션 밖에서 끝낸다.
+            List<ChecklistItem> generated = checklistGenerationService.generateChecklist(accident);
+            items = checklistStore.saveIfAbsent(accidentId, generated);
         }
 
         return items.stream().map(ChecklistItemResponse::from).toList();
@@ -56,6 +62,8 @@ public class ChecklistService {
      *
      * 완료뿐 아니라 해제도 받는다. 사고 직후 급한 상황에서 누르는 화면이라 잘못 체크하는 일이
      * 생기는데, 되돌릴 수 없으면 하지 않은 일을 완료로 남긴 채 다음 단계로 넘어가게 된다.
+     *
+     * 외부 호출이 없어 여기는 트랜잭션으로 감싼다.
      */
     @Transactional
     public ChecklistItemResponse updateCompletion(Long userId, Long accidentId,
