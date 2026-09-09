@@ -43,6 +43,8 @@ public class ChecklistStore {
      */
     @Transactional
     public List<ChecklistItem> saveIfAbsent(Long accidentId, List<ChecklistItem> generated) {
+        // 반환값을 쓰지 않는 호출이다. 사고 행에 쓰기 락을 걸어 아래 확인·저장 구간을
+        // 한 번에 하나만 지나가게 하는 것이 목적이라, 조회 결과 자체는 필요 없다.
         accidentRepository.findByIdForUpdate(accidentId);
 
         List<ChecklistItem> existing =
