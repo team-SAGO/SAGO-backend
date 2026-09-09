@@ -75,10 +75,10 @@ public enum FileCategory {
      */
     public void validateCount(int count) {
         if (count <= 0) {
-            throw new S3UploadException("업로드할 파일 목록이 비어 있습니다");
+            throw new S3ValidationException("업로드할 파일 목록이 비어 있습니다");
         }
         if (count > maxCount) {
-            throw new S3UploadException(
+            throw new S3ValidationException(
                 "한 번에 올릴 수 있는 파일은 " + maxCount + "개까지입니다 (요청 " + count + "개)");
         }
     }
@@ -88,14 +88,14 @@ public enum FileCategory {
      */
     public void validate(String extension, long sizeBytes) {
         if (extension == null || !allowedExtensions.contains(extension)) {
-            throw new S3UploadException(
+            throw new S3ValidationException(
                 "허용되지 않은 파일 형식입니다: " + extension + " (허용: " + allowedExtensions + ")");
         }
         if (sizeBytes <= 0) {
-            throw new S3UploadException("빈 파일은 업로드할 수 없습니다");
+            throw new S3ValidationException("빈 파일은 업로드할 수 없습니다");
         }
         if (sizeBytes > maxSizeBytes) {
-            throw new S3UploadException(
+            throw new S3ValidationException(
                 "파일 용량이 너무 큽니다: " + sizeBytes + "바이트 (상한 " + maxSizeBytes + "바이트)");
         }
     }

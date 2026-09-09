@@ -65,7 +65,7 @@ class S3UploaderTest {
             .thenThrow(failure);
 
         assertThatThrownBy(() -> s3Uploader.uploadAll(photos(3), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class)
+            .isInstanceOf(S3CommunicationException.class)
             .hasCause(failure);
 
         // 성공한 1장 + putObject가 터진 2장째(저장 후 응답 실패 가능성)까지 정리
@@ -83,7 +83,7 @@ class S3UploaderTest {
             .thenThrow(S3Exception.builder().message("삭제 실패").build());
 
         assertThatThrownBy(() -> s3Uploader.uploadAll(photos(2), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class)
+            .isInstanceOf(S3CommunicationException.class)
             .hasCause(uploadFailure);
     }
 
@@ -96,7 +96,7 @@ class S3UploaderTest {
             photo("animation.gif"));
 
         assertThatThrownBy(() -> s3Uploader.uploadAll(files, FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class);
+            .isInstanceOf(S3ValidationException.class);
 
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
@@ -107,7 +107,7 @@ class S3UploaderTest {
         int overLimit = FileCategory.ACCIDENT_PHOTO.getMaxCount() + 1;
 
         assertThatThrownBy(() -> s3Uploader.uploadAll(photos(overLimit), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class);
+            .isInstanceOf(S3ValidationException.class);
 
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
     }
@@ -133,7 +133,7 @@ class S3UploaderTest {
             .thenThrow(failure);
 
         assertThatThrownBy(() -> s3Uploader.upload(photo("photo.jpg"), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class)
+            .isInstanceOf(S3CommunicationException.class)
             .hasCause(failure);
 
         // 객체가 저장된 뒤 응답에서 터졌을 수 있으므로, 호출자가 URL을 못 받는 이 경로에서 직접 정리한다
@@ -153,7 +153,7 @@ class S3UploaderTest {
             .thenThrow(S3Exception.builder().message("삭제 실패").build());
 
         assertThatThrownBy(() -> s3Uploader.upload(photo("photo.jpg"), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class)
+            .isInstanceOf(S3CommunicationException.class)
             .hasCause(uploadFailure);
     }
 
@@ -161,9 +161,25 @@ class S3UploaderTest {
     @DisplayName("빈 목록은 업로드를 시도하지 않는다")
     void rejectsEmptyFileList() {
         assertThatThrownBy(() -> s3Uploader.uploadAll(List.of(), FileCategory.ACCIDENT_PHOTO))
-            .isInstanceOf(S3UploadException.class);
+            .isInstanceOf(S3ValidationException.class);
 
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    @DisplayName("검증 실패와 통신 실패는 공통 상위 타입으로도 잡힌다")
+    void bothFailureTypesShareCommonParent() {
+        // 되돌리기처럼 원인과 무관하게 정리만 하는 경로가 부모 타입 하나로 잡을 수 있어야 한다
+        assertThat(new S3ValidationException("검증")).isInstanceOf(S3UploadException.class);
+        assertThat(new S3CommunicationException("통신")).isInstanceOf(S3UploadException.class);
+    }
+
+    @Test
+    @DisplayName("허용되지 않은 확장자는 검증 실패이고 통신 실패가 아니다")
+    void disallowedExtensionIsValidationNotCommunication() {
+        assertThatThrownBy(() -> s3Uploader.upload(photo("animation.gif"), FileCategory.ACCIDENT_PHOTO))
+            .isInstanceOf(S3ValidationException.class)
+            .isNotInstanceOf(S3CommunicationException.class);
     }
 
     @Test
