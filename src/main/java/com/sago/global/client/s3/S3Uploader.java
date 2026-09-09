@@ -42,7 +42,7 @@ public class S3Uploader {
      */
     public String upload(MultipartFile file, FileCategory category) {
         if (file == null || file.isEmpty()) {
-            throw new S3UploadException("업로드할 파일이 없습니다");
+            throw new S3ValidationException("업로드할 파일이 없습니다");
         }
 
         String extension = extractExtension(file.getOriginalFilename());
@@ -51,7 +51,7 @@ public class S3Uploader {
         try {
             return put(file.getBytes(), extension, resolveContentType(file.getContentType(), extension), category);
         } catch (IOException e) {
-            throw new S3UploadException("업로드 파일을 읽지 못했습니다", e);
+            throw new S3CommunicationException("업로드 파일을 읽지 못했습니다", e);
         }
     }
 
@@ -67,7 +67,7 @@ public class S3Uploader {
      */
     public List<String> uploadAll(List<MultipartFile> files, FileCategory category) {
         if (files == null || files.isEmpty()) {
-            throw new S3UploadException("업로드할 파일 목록이 비어 있습니다");
+            throw new S3ValidationException("업로드할 파일 목록이 비어 있습니다");
         }
         category.validateCount(files.size());
         files.forEach(file -> validateBeforeUpload(file, category));
@@ -89,7 +89,7 @@ public class S3Uploader {
      */
     public String upload(byte[] bytes, String extension, FileCategory category) {
         if (bytes == null || bytes.length == 0) {
-            throw new S3UploadException("업로드할 파일이 없습니다");
+            throw new S3ValidationException("업로드할 파일이 없습니다");
         }
 
         String normalized = normalize(extension);
@@ -109,7 +109,7 @@ public class S3Uploader {
                 .key(key)
                 .build());
         } catch (Exception e) {
-            throw new S3UploadException("S3 파일 삭제 실패: " + key, e);
+            throw new S3CommunicationException("S3 파일 삭제 실패: " + key, e);
         }
     }
 
@@ -118,7 +118,7 @@ public class S3Uploader {
      */
     private void validateBeforeUpload(MultipartFile file, FileCategory category) {
         if (file == null || file.isEmpty()) {
-            throw new S3UploadException("업로드할 파일이 없습니다");
+            throw new S3ValidationException("업로드할 파일이 없습니다");
         }
         category.validate(extractExtension(file.getOriginalFilename()), file.getSize());
     }
@@ -156,7 +156,7 @@ public class S3Uploader {
             // 그 경우 호출자는 URL을 돌려받지 못해 지울 방법이 없으므로 여기서 정리한다.
             // 실제로 저장되지 않았다면 없는 키를 지우는 셈인데, S3는 이를 성공으로 처리한다.
             deleteQuietly(toUrl(key));
-            throw new S3UploadException("S3 업로드 실패: " + key, e);
+            throw new S3CommunicationException("S3 업로드 실패: " + key, e);
         }
 
         return toUrl(key);
@@ -171,16 +171,16 @@ public class S3Uploader {
      */
     public String extractKey(String fileUrl) {
         if (fileUrl == null || fileUrl.isBlank()) {
-            throw new S3UploadException("파일 URL이 비어 있습니다");
+            throw new S3CommunicationException("파일 URL이 비어 있습니다");
         }
         try {
             String path = new URI(fileUrl).getPath();
             if (path == null || path.length() <= 1) {
-                throw new S3UploadException("S3 파일 URL이 아닙니다: " + fileUrl);
+                throw new S3CommunicationException("S3 파일 URL이 아닙니다: " + fileUrl);
             }
             return path.substring(1);
         } catch (URISyntaxException e) {
-            throw new S3UploadException("잘못된 파일 URL입니다: " + fileUrl, e);
+            throw new S3CommunicationException("잘못된 파일 URL입니다: " + fileUrl, e);
         }
     }
 

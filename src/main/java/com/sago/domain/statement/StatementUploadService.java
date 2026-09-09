@@ -2,7 +2,8 @@ package com.sago.domain.statement;
 
 import com.sago.domain.accident.Accident;
 import com.sago.global.client.s3.FileCategory;
-import com.sago.global.client.s3.S3UploadException;
+import com.sago.global.client.s3.S3CommunicationException;
+import com.sago.global.client.s3.S3ValidationException;
 import com.sago.global.client.s3.S3Uploader;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,7 +41,7 @@ public class StatementUploadService {
      */
     public Statement upload(Accident accident, MultipartFile audioFile) {
         if (audioFile == null || audioFile.isEmpty()) {
-            throw new S3UploadException("업로드할 음성 파일이 없습니다");
+            throw new S3ValidationException("업로드할 음성 파일이 없습니다");
         }
 
         // 파일 전체를 메모리에 올리기 전에 확장자·용량부터 확인한다.
@@ -63,7 +64,7 @@ public class StatementUploadService {
         try {
             return audioFile.getBytes();
         } catch (IOException e) {
-            throw new S3UploadException("음성 파일을 읽지 못했습니다", e);
+            throw new S3CommunicationException("음성 파일을 읽지 못했습니다", e);
         }
     }
 

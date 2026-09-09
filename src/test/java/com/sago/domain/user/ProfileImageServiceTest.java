@@ -3,7 +3,7 @@ package com.sago.domain.user;
 import com.sago.domain.user.ProfileImageStore.ImageReplacement;
 import com.sago.domain.user.dto.ProfileResponse;
 import com.sago.global.client.s3.FileCategory;
-import com.sago.global.client.s3.S3UploadException;
+import com.sago.global.client.s3.S3CommunicationException;
 import com.sago.global.client.s3.S3Uploader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -93,7 +93,7 @@ class ProfileImageServiceTest {
         when(s3Uploader.upload(any(MultipartFile.class), eq(FileCategory.PROFILE_IMAGE)))
             .thenReturn(NEW_URL);
         when(profileImageStore.replaceImage(1L, NEW_URL)).thenReturn(replacement(OLD_URL));
-        doThrow(new S3UploadException("삭제 실패")).when(s3Uploader).delete(OLD_URL);
+        doThrow(new S3CommunicationException("삭제 실패")).when(s3Uploader).delete(OLD_URL);
 
         ProfileResponse response = profileImageService.upload(1L, image());
 
