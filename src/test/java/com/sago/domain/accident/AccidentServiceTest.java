@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -96,6 +97,40 @@ class AccidentServiceTest {
     }
 
     @Test
+    @DisplayName("사고 목록은 최신순으로 내 것만 조회한다")
+    void listsOnlyMyAccidentsInRecentOrder() {
+        Accident older = accidentOf(LocalDateTime.of(2026, 9, 1, 10, 0));
+        Accident newer = accidentOf(LocalDateTime.of(2026, 9, 5, 10, 0));
+        // 정렬은 리포지토리 쿼리가 보장한다. 서비스는 그 순서를 흐트러뜨리지 않아야 한다.
+        when(accidentRepository.findByUser_UserIdOrderByOccurredAtDesc(1L))
+            .thenReturn(List.of(newer, older));
+
+        var responses = accidentService.getMyAccidents(1L);
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).occurredAt()).isEqualTo(newer.getOccurredAt());
+        assertThat(responses.get(1).occurredAt()).isEqualTo(older.getOccurredAt());
+    }
+
+    @Test
+    @DisplayName("사고가 없으면 빈 목록이 나온다")
+    void emptyHistoryReturnsEmptyList() {
+        when(accidentRepository.findByUser_UserIdOrderByOccurredAtDesc(1L)).thenReturn(List.of());
+
+        assertThat(accidentService.getMyAccidents(1L)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("남의 사고 상세는 404다")
+    void othersAccidentDetailIsNotFound() {
+        Accident accident = accidentOf(LocalDateTime.now());
+        when(accidentRepository.findById(10L)).thenReturn(Optional.of(accident));
+
+        assertThatThrownBy(() -> accidentService.getAccident(999L, 10L))
+            .isInstanceOf(AccidentNotFoundException.class);
+    }
+
+    @Test
     @DisplayName("남의 사고를 조회하면 존재 여부를 감추기 위해 404로 응답한다")
     void othersAccidentIsNotFound() {
         Accident accident = Accident.builder()
@@ -120,6 +155,14 @@ class AccidentServiceTest {
         when(accidentRepository.findById(10L)).thenReturn(Optional.of(accident));
 
         assertThat(accidentService.getOwnedAccident(1L, 10L)).isSameAs(accident);
+    }
+
+    private Accident accidentOf(LocalDateTime occurredAt) {
+        return Accident.builder()
+            .user(owner)
+            .accidentType(AccidentType.VEHICLE)
+            .occurredAt(occurredAt)
+            .build();
     }
 
     private AccidentCreateRequest request(LocalDateTime occurredAt) {

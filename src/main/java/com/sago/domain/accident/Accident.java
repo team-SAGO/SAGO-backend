@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -26,7 +27,14 @@ import java.time.LocalDateTime;
  * 사고 대응 플로우의 모든 산출물이 이 엔티티의 accidentId를 참조한다.
  */
 @Entity
-@Table(name = "accident")
+@Table(
+    name = "accident",
+    // 사고 이력 화면과 홈이 회원별로 발생 시각 역순을 읽는다. 사고 기록은 쌓이기만 하고
+    // 지워지지 않는 데이터라, 복합 인덱스로 조회와 정렬을 함께 해결해 둔다.
+    indexes = @Index(
+        name = "idx_accident_user_occurred",
+        columnList = "user_id, occurred_at")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Accident {

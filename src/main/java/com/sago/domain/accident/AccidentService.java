@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Step 2 — 사고 발생 버튼을 눌렀을 때 사고 케이스를 만든다 (FR-02).
@@ -50,6 +51,28 @@ public class AccidentService {
             .build());
 
         return AccidentResponse.from(accident);
+    }
+
+    /**
+     * 내 사고 목록. 최근에 일어난 사고가 먼저 온다.
+     *
+     * 토큰의 userId로만 조회하므로 남의 사고가 섞일 여지가 없다 —
+     * 상세 조회와 달리 소유권을 따로 확인할 필요가 없는 이유다.
+     *
+     * 페이지네이션은 두지 않았다. 개인의 사고 이력은 많아야 수십 건이라 페이지를 나누면
+     * 클라이언트만 복잡해진다. 이력이 많은 사용자가 생기면 그때 추가한다.
+     */
+    @Transactional(readOnly = true)
+    public List<AccidentResponse> getMyAccidents(Long userId) {
+        return accidentRepository.findByUser_UserIdOrderByOccurredAtDesc(userId).stream()
+            .map(AccidentResponse::from)
+            .toList();
+    }
+
+    /** 사고 상세. 본인 사고가 아니면 404다. */
+    @Transactional(readOnly = true)
+    public AccidentResponse getAccident(Long userId, Long accidentId) {
+        return AccidentResponse.from(getOwnedAccident(userId, accidentId));
     }
 
     /**
