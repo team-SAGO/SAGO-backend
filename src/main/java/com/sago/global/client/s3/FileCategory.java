@@ -1,6 +1,8 @@
 package com.sago.global.client.s3;
 
+import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * S3에 올라가는 파일의 종류. 종류마다 저장 경로·허용 확장자·용량 상한이 다르므로
@@ -87,16 +89,51 @@ public enum FileCategory {
      * 확장자·용량이 이 종류에 허용되는지 검사한다. 위반 시 업로드 전에 즉시 실패시킨다.
      */
     public void validate(String extension, long sizeBytes) {
-        if (extension == null || !allowedExtensions.contains(extension)) {
+        if (extension == null) {
             throw new S3ValidationException(
-                "허용되지 않은 파일 형식입니다: " + extension + " (허용: " + allowedExtensions + ")");
+                "파일 확장자를 알 수 없습니다. 허용되는 형식: " + describeAllowedExtensions());
+        }
+        if (!allowedExtensions.contains(extension)) {
+            throw new S3ValidationException(
+                "허용되지 않은 파일 형식입니다: " + extension
+                    + " (허용: " + describeAllowedExtensions() + ")");
         }
         if (sizeBytes <= 0) {
             throw new S3ValidationException("빈 파일은 업로드할 수 없습니다");
         }
         if (sizeBytes > maxSizeBytes) {
             throw new S3ValidationException(
-                "파일 용량이 너무 큽니다: " + sizeBytes + "바이트 (상한 " + maxSizeBytes + "바이트)");
+                "파일 용량이 너무 큽니다: " + describeSizeAtLeast(sizeBytes)
+                    + " (상한 " + describeSize(maxSizeBytes) + ")");
         }
+    }
+
+    /**
+     * 허용 확장자를 사용자에게 보여줄 형태로 만든다.
+     * Set의 기본 문자열은 순서가 정해져 있지 않아 실행할 때마다 달라지므로 정렬한다.
+     */
+    private String describeAllowedExtensions() {
+        return allowedExtensions.stream().sorted().collect(Collectors.joining(", "));
+    }
+
+    /**
+     * 용량을 MB로 표기한다. 바이트 숫자를 그대로 보여주면 얼마나 줄여야 하는지 알기 어렵다.
+     */
+    private static String describeSize(long bytes) {
+        return trimZero(bytes / (double) (1024 * 1024)) + "MB";
+    }
+
+    /**
+     * 상한을 넘은 실제 용량 표기. 소수점 첫째 자리에서 올린다.
+     * 내림하면 상한을 1바이트 넘긴 파일이 "5MB (상한 5MB)"로 나와, 왜 거부됐는지 알 수 없다.
+     */
+    private static String describeSizeAtLeast(long bytes) {
+        double megabytes = bytes / (double) (1024 * 1024);
+        return trimZero(Math.ceil(megabytes * 10) / 10) + "MB";
+    }
+
+    private static String trimZero(double megabytes) {
+        String text = String.format(Locale.ROOT, "%.1f", megabytes);
+        return text.endsWith(".0") ? text.substring(0, text.length() - 2) : text;
     }
 }
