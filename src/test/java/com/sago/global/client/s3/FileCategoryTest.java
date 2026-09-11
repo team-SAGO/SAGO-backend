@@ -38,6 +38,26 @@ class FileCategoryTest {
     }
 
     @Test
+    @DisplayName("파일명에 넣은 태그는 응답에 그대로 되돌아가지 않는다")
+    void doesNotEchoMarkupFromFilename() {
+        // 확장자는 사용자가 지은 파일명에서 온 값이고, 검증 실패 메시지는 400으로 응답에 실린다
+        assertThatThrownBy(() -> FileCategory.PROFILE_IMAGE.validate("<script>alert(1)</script>", ONE_MB))
+            .isInstanceOf(S3ValidationException.class)
+            .hasMessage("허용되지 않은 파일 형식입니다: scriptalert1script (허용: jpeg, jpg, png, webp)");
+    }
+
+    @Test
+    @DisplayName("확장자가 지나치게 길면 잘라서 보여준다")
+    void truncatesOverlongExtension() {
+        String overlong = "a".repeat(500);
+
+        assertThatThrownBy(() -> FileCategory.PROFILE_IMAGE.validate(overlong, ONE_MB))
+            .isInstanceOf(S3ValidationException.class)
+            .hasMessageContaining("a".repeat(20) + "…")
+            .hasMessageNotContaining("a".repeat(21));
+    }
+
+    @Test
     @DisplayName("확장자가 없으면 null을 노출하지 않고 허용 형식을 안내한다")
     void explainsMissingExtensionWithoutPrintingNull() {
         assertThatThrownBy(() -> FileCategory.PROFILE_IMAGE.validate(null, ONE_MB))

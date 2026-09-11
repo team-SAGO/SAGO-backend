@@ -95,7 +95,7 @@ public enum FileCategory {
         }
         if (!allowedExtensions.contains(extension)) {
             throw new S3ValidationException(
-                "허용되지 않은 파일 형식입니다: " + extension
+                "허용되지 않은 파일 형식입니다: " + describeRejected(extension)
                     + " (허용: " + describeAllowedExtensions() + ")");
         }
         if (sizeBytes <= 0) {
@@ -106,6 +106,27 @@ public enum FileCategory {
                 "파일 용량이 너무 큽니다: " + describeSizeAtLeast(sizeBytes)
                     + " (상한 " + describeSize(maxSizeBytes) + ")");
         }
+    }
+
+    /** 거부된 확장자를 응답에 실을 때 남길 최대 길이. */
+    private static final int REJECTED_EXTENSION_MAX_LENGTH = 20;
+
+    /**
+     * 거부된 확장자를 응답에 실을 수 있는 형태로 다듬는다.
+     *
+     * 이 값은 사용자가 지은 파일명의 마지막 점 뒤를 그대로 잘라낸 것이라 무엇이든 들어올 수 있다.
+     * 검증 실패가 400으로 내려가면서 응답 본문에 실리므로, 두 가지를 막는다.
+     * - 파일명이 길면 에러 메시지가 통째로 길어진다
+     * - 파일명에 넣은 태그·따옴표가 그대로 되돌아간다 (프론트가 이스케이프하지 않으면 그대로 그려진다)
+     */
+    private static String describeRejected(String extension) {
+        String safe = extension.replaceAll("[^a-z0-9]", "");
+        if (safe.isEmpty()) {
+            return "(알 수 없음)";
+        }
+        return safe.length() > REJECTED_EXTENSION_MAX_LENGTH
+            ? safe.substring(0, REJECTED_EXTENSION_MAX_LENGTH) + "…"
+            : safe;
     }
 
     /**
