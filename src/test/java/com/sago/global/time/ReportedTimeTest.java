@@ -41,4 +41,27 @@ class ReportedTimeTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("연결 시각은 미래일 수 없습니다.");
     }
+
+    @Test
+    @DisplayName("버리는 방식은 보내지 않았을 때 지금을 채우지 않는다")
+    void discardKeepsMissingTimeUnknown() {
+        // 갤러리에서 나중에 올린 사진에 올린 시각을 촬영 시각으로 적으면 틀린 값이 된다
+        assertThat(ReportedTime.discardIfFuture(null)).isNull();
+    }
+
+    @Test
+    @DisplayName("버리는 방식도 과거와 시계 오차 범위 안의 시각은 그대로 쓴다")
+    void discardKeepsAcceptableTime() {
+        LocalDateTime past = LocalDateTime.of(2026, 9, 1, 12, 30);
+        LocalDateTime slightlyAhead = LocalDateTime.now().plusMinutes(1);
+
+        assertThat(ReportedTime.discardIfFuture(past)).isEqualTo(past);
+        assertThat(ReportedTime.discardIfFuture(slightlyAhead)).isEqualTo(slightlyAhead);
+    }
+
+    @Test
+    @DisplayName("허용 범위를 넘은 미래 시각은 거부하지 않고 버린다")
+    void discardsFarFutureInsteadOfRejecting() {
+        assertThat(ReportedTime.discardIfFuture(LocalDateTime.now().plusHours(1))).isNull();
+    }
 }
