@@ -5,11 +5,10 @@ import com.sago.domain.accident.dto.AccidentResponse;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.domain.user.UserRepository;
+import com.sago.global.time.ReportedTime;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -20,9 +19,6 @@ import java.util.List;
  */
 @Service
 public class AccidentService {
-
-    /** 클라이언트와 서버의 시계 차이를 감안해 미래로 허용하는 범위. */
-    private static final Duration FUTURE_TOLERANCE = Duration.ofMinutes(5);
 
     private final AccidentRepository accidentRepository;
     private final UserRepository userRepository;
@@ -42,7 +38,7 @@ public class AccidentService {
             .accidentType(request.accidentType())
             .injurySelf(request.injurySelf())
             .injuryOther(request.injuryOther())
-            .occurredAt(resolveOccurredAt(request.occurredAt()))
+            .occurredAt(ReportedTime.resolve(request.occurredAt(), "사고 발생 시각"))
             .latitude(request.latitude())
             .longitude(request.longitude())
             .direction(request.direction())
@@ -73,26 +69,6 @@ public class AccidentService {
     @Transactional(readOnly = true)
     public AccidentResponse getAccident(Long userId, Long accidentId) {
         return AccidentResponse.from(getOwnedAccident(userId, accidentId));
-    }
-
-    /**
-     * 발생 시각을 정한다.
-     *
-     * 보내지 않았다면 버튼을 누른 지금을 사고 시각으로 본다.
-     *
-     * 미래 시각은 거부한다. 이 값은 경위서와 보험 서류에 그대로 실리므로, 기기 시간이 틀어져
-     * 들어온 값을 그대로 저장하면 사후에 바로잡기 어렵다. 다만 클라이언트와 서버의 시계가
-     * 몇 초 어긋나는 건 흔한 일이라, 그 정도까지 반려하면 정상 신고가 막힌다 —
-     * 그래서 @PastOrPresent로 딱 잘라 검증하지 않고 여유를 둔다.
-     */
-    private LocalDateTime resolveOccurredAt(LocalDateTime occurredAt) {
-        if (occurredAt == null) {
-            return LocalDateTime.now();
-        }
-        if (occurredAt.isAfter(LocalDateTime.now().plus(FUTURE_TOLERANCE))) {
-            throw new IllegalArgumentException("사고 발생 시각은 미래일 수 없습니다.");
-        }
-        return occurredAt;
     }
 
     /**
