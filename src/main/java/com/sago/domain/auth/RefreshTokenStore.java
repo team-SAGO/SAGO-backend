@@ -64,6 +64,21 @@ public class RefreshTokenStore {
     }
 
     /**
+     * 만료된 토큰 행을 지우고 지운 개수를 돌려준다.
+     *
+     * 로그아웃·재발급·탈퇴는 모두 행을 지우지만, 아무것도 하지 않은 채 만료된 토큰은 지우는 주체가
+     * 없어 쌓이기만 한다. 만료된 토큰은 서명 검증 단계에서 이미 거부되므로 동작에는 영향이 없고,
+     * 순수하게 행을 치우는 작업이다.
+     *
+     * 이미 만료된 토큰만 지운다. expires_at은 JWT를 만든 뒤에 계산해 JWT 자체의 만료보다 조금 늦으므로,
+     * 이 조건에 걸린 행은 토큰도 반드시 만료된 상태다 — 아직 쓸 수 있는 토큰을 지울 일은 없다.
+     */
+    @Transactional
+    public int deleteExpired() {
+        return refreshTokenRepository.deleteAllExpiredBefore(LocalDateTime.now());
+    }
+
+    /**
      * 토큰 원문 대신 저장할 해시를 만든다.
      *
      * BCrypt 같은 salt 기반 해시는 같은 입력이 매번 다른 값이 되어 저장된 값과 대조할 수 없다.
