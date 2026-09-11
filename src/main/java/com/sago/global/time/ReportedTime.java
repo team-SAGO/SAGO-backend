@@ -35,9 +35,32 @@ public final class ReportedTime {
         if (reported == null) {
             return LocalDateTime.now();
         }
-        if (reported.isAfter(LocalDateTime.now().plus(FUTURE_TOLERANCE))) {
+        if (isBeyondTolerance(reported)) {
             throw new IllegalArgumentException(what + "은 미래일 수 없습니다.");
         }
         return reported;
+    }
+
+    /**
+     * 보고된 시각을 받되, 믿을 수 없는 미래 값이면 거부하지 않고 버린다(null).
+     *
+     * 시각보다 그 시각이 붙은 자료가 더 중요할 때 쓴다. 사고 사진이 그렇다 — 재촬영할 수 없는
+     * 사진을 기기 시계 하나 때문에 거부하면 복구할 수 없는 손실이 된다. 틀린 시각을 저장하는 것도
+     * 서류에 그대로 실려 곤란하므로, "모름"으로 남긴다.
+     *
+     * {@link #resolve}와 달리 보내지 않았을 때 지금을 채우지 않는다. 사진은 갤러리에서 나중에
+     * 올릴 수도 있어, 올린 시각을 촬영 시각으로 적으면 틀린 값이 된다.
+     *
+     * @return 받아들일 수 있는 시각. 보내지 않았거나 허용 범위를 넘은 미래면 null.
+     */
+    public static LocalDateTime discardIfFuture(LocalDateTime reported) {
+        if (reported == null || isBeyondTolerance(reported)) {
+            return null;
+        }
+        return reported;
+    }
+
+    private static boolean isBeyondTolerance(LocalDateTime reported) {
+        return reported.isAfter(LocalDateTime.now().plus(FUTURE_TOLERANCE));
     }
 }
