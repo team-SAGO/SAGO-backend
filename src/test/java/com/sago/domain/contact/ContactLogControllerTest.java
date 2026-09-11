@@ -104,6 +104,27 @@ class ContactLogControllerTest {
     }
 
     @Test
+    @DisplayName("연결 시각이 사고 발생 시각보다 앞서도 기록된다 — 기기 시계가 빠른 경우")
+    void recordsContactEarlierThanReportedOccurrence() throws Exception {
+        // 기기 시계가 3분 빨라 발생 시각이 서버 기준 미래로 들어왔다 (허용 범위 안이라 저장됨).
+        User owner = userRepository.save(User.builder().email("fast-clock@example.com").build());
+        Long fastClockAccidentId = accidentRepository.save(Accident.builder()
+            .user(owner)
+            .accidentType(AccidentType.VEHICLE)
+            .occurredAt(LocalDateTime.now().plusMinutes(3))
+            .build()).getAccidentId();
+
+        // 곧바로 112에 걸고 시각은 생략 → 서버 시각이라 발생 시각보다 앞선다.
+        // 앞뒤 순서로 거부하면 가장 흔한 흐름이 막힌다.
+        mockMvc.perform(post("/api/accidents/{id}/contacts", fastClockAccidentId)
+                .header(HttpHeaders.AUTHORIZATION,
+                    "Bearer " + jwtTokenProvider.createAccessToken(owner.getUserId()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"contactType\":\"EMERGENCY_112\"}"))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
     @DisplayName("연결 유형이 없으면 400이다")
     void contactTypeIsRequired() throws Exception {
         mockMvc.perform(post("/api/accidents/{id}/contacts", accidentId)
