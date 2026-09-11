@@ -3,6 +3,7 @@ package com.sago.global.exception;
 import com.sago.domain.accident.AccidentNotFoundException;
 import com.sago.domain.auth.UnsupportedProviderException;
 import com.sago.domain.auth.WithdrawnUserException;
+import com.sago.domain.checklist.ChecklistItemNotFoundException;
 import com.sago.domain.terms.RequiredTermsNotAgreedException;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.global.client.oauth.OAuthApiException;
@@ -52,6 +53,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleAccidentNotFound(AccidentNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(new ErrorResponse("ACCIDENT_NOT_FOUND", e.getMessage()));
+    }
+
+    @ExceptionHandler(ChecklistItemNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleChecklistItemNotFound(
+        ChecklistItemNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("CHECKLIST_ITEM_NOT_FOUND", e.getMessage()));
     }
 
     @ExceptionHandler(UserNotFoundException.class)

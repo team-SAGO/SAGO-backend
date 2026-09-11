@@ -9,7 +9,6 @@ import com.sago.domain.accident.InjuryLevel;
 import com.sago.global.client.gemini.GeminiApiException;
 import com.sago.global.client.gemini.GeminiClient;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,6 +17,11 @@ import java.util.Map;
 /**
  * Step 3 — 사고 유형별 AI 대응 체크리스트 생성 (기획안 9.2 Prompt 1).
  * Gemini 응답 실패·무료 한도 초과 시 사고 유형별 정적 기본 체크리스트로 폴백한다.
+ *
+ * 항목을 만들기만 하고 저장하지는 않는다. 저장까지 여기서 하면 Gemini 호출이 트랜잭션
+ * 안에 들어가는데, 읽기 타임아웃이 30초라 그동안 DB 커넥션을 붙잡게 된다. 체크리스트 첫
+ * 조회는 모든 사용자가 반드시 거치는 지점이라 사고가 몰릴 때 커넥션 풀이 먼저 마른다.
+ * 저장은 호출자(ChecklistStore)가 짧은 트랜잭션으로 처리한다.
  */
 @Service
 public class ChecklistGenerationService {
@@ -30,18 +34,17 @@ public class ChecklistGenerationService {
     );
 
     private final GeminiClient geminiClient;
-    private final ChecklistItemRepository checklistItemRepository;
     private final ObjectMapper objectMapper;
 
-    public ChecklistGenerationService(GeminiClient geminiClient,
-                                       ChecklistItemRepository checklistItemRepository,
-                                       ObjectMapper objectMapper) {
+    public ChecklistGenerationService(GeminiClient geminiClient, ObjectMapper objectMapper) {
         this.geminiClient = geminiClient;
-        this.checklistItemRepository = checklistItemRepository;
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
+    /**
+     * 저장되지 않은 체크리스트 항목을 만들어 돌려준다.
+     * 외부 호출(Gemini)이 들어 있으므로 트랜잭션 밖에서 부를 것.
+     */
     public List<ChecklistItem> generateChecklist(Accident accident) {
         List<String> contents;
         ChecklistSource source;
@@ -67,7 +70,7 @@ public class ChecklistGenerationService {
                 .build());
         }
 
-        return checklistItemRepository.saveAll(checklistItems);
+        return checklistItems;
     }
 
     private String buildPrompt(Accident accident) {
