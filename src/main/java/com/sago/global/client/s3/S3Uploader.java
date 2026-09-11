@@ -13,6 +13,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
+import com.sago.global.client.s3.MultiUploadResult.FailedUpload;
+import com.sago.global.client.s3.MultiUploadResult.FailureType;
+
 import java.util.Locale;
 import java.util.UUID;
 
@@ -28,6 +31,9 @@ import java.util.UUID;
 @Slf4j
 @Component
 public class S3Uploader {
+
+    /** 실패 응답에 실을 파일명의 최대 길이. */
+    private static final int FILENAME_MAX_LENGTH = 100;
 
     private final S3Client s3Client;
     private final S3Properties properties;
@@ -82,6 +88,75 @@ public class S3Uploader {
             throw e;
         }
         return uploadedUrls;
+    }
+
+    /**
+     * 여러 파일을 올리되, 일부가 실패해도 성공한 것은 그대로 둔다.
+     *
+     * {@link #uploadAll}과 달리 되돌리지 않는다. 사고 현장 사진처럼 재촬영이 불가능한 자료는
+     * 되돌리는 쪽이 복구할 수 없는 손실을 만들기 때문이다. 어떤 종류가 이에 해당하는지는
+     * {@link FileCategory#isPartialSuccessAllowed()}가 정한다.
+     *
+     * 개수 상한을 넘거나 목록이 비어 있으면 한 장도 올리지 않고 예외를 던진다.
+     * 그건 요청 자체가 잘못된 것이라 부분 성공을 따질 대상이 아니다.
+     */
+    public MultiUploadResult uploadAllowingPartial(List<MultipartFile> files, FileCategory category) {
+        if (!category.isPartialSuccessAllowed()) {
+            throw new IllegalArgumentException(
+                category + "는 부분 성공을 허용하지 않습니다. uploadAll을 사용하세요.");
+        }
+        if (files == null || files.isEmpty()) {
+            throw new S3ValidationException("업로드할 파일 목록이 비어 있습니다");
+        }
+        category.validateCount(files.size());
+
+        List<String> uploadedUrls = new ArrayList<>(files.size());
+        List<FailedUpload> failures = new ArrayList<>();
+
+        for (int index = 0; index < files.size(); index++) {
+            MultipartFile file = files.get(index);
+            try {
+                uploadedUrls.add(upload(file, category));
+            } catch (S3ValidationException e) {
+                // 그 파일을 바꿔야 하는 문제라 사유를 그대로 알려준다
+                failures.add(new FailedUpload(index, describeFilename(file),
+                    FailureType.INVALID_FILE, e.getMessage()));
+            } catch (S3CommunicationException e) {
+                // 메시지에 S3 오브젝트 키가 들어 있어 그대로 내보내면 안 된다
+                log.warn("사진 업로드 실패, 나머지는 계속 진행합니다: {}", describeFilename(file), e);
+                failures.add(new FailedUpload(index, describeFilename(file),
+                    FailureType.STORAGE_ERROR, "업로드에 실패했습니다. 다시 시도해주세요."));
+            }
+        }
+
+        return new MultiUploadResult(uploadedUrls, failures);
+    }
+
+    /**
+     * 실패 응답에 실을 파일명을 다듬는다.
+     *
+     * 사용자가 지은 이름이 그대로 되돌아가는 값이라, 확장자와 같은 이유로 손을 본다.
+     * 다만 한글 파일명을 살려야 해서 전부 걸러내지는 않고, 태그로 읽힐 문자만 없애고 길이를 자른다.
+     */
+    private String describeFilename(MultipartFile file) {
+        String filename = file == null ? null : file.getOriginalFilename();
+        if (filename == null || filename.isBlank()) {
+            return null;
+        }
+        StringBuilder builder = new StringBuilder(filename.length());
+        for (char character : filename.toCharArray()) {
+            // 제어문자와 태그로 읽힐 문자만 걸러낸다. 한글 파일명은 그대로 살린다.
+            if (character >= ' ' && "<>\"'&".indexOf(character) < 0) {
+                builder.append(character);
+            }
+        }
+        String safe = builder.toString().trim();
+        if (safe.isEmpty()) {
+            return null;
+        }
+        return safe.length() > FILENAME_MAX_LENGTH
+            ? safe.substring(0, FILENAME_MAX_LENGTH) + "…"
+            : safe;
     }
 
     /**
