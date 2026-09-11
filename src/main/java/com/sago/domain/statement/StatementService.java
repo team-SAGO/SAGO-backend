@@ -4,7 +4,6 @@ import com.sago.domain.accident.Accident;
 import com.sago.global.client.stt.SpeechToTextClient;
 import com.sago.global.client.stt.SpeechToTextException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Step 4 — 음성 진술을 저장하고 STT로 텍스트 변환한다.
@@ -22,7 +21,13 @@ public class StatementService {
         this.statementRepository = statementRepository;
     }
 
-    @Transactional
+    /**
+     * 음성을 텍스트로 변환해 진술을 저장한다.
+     *
+     * 트랜잭션을 걸지 않는다. Google STT 호출이 들어 있어서, 감싸버리면 인식이 끝날 때까지
+     * DB 커넥션을 붙잡는다. 인식에는 제한 시간도 설정돼 있지 않아 그 시간이 길어질 수 있다.
+     * DB 작업은 마지막 save() 하나뿐이라 리포지토리 자체 트랜잭션으로 충분하다.
+     */
     public Statement transcribe(Accident accident, String audioFileUrl, byte[] audioBytes) {
         String sttText = null;
         try {
