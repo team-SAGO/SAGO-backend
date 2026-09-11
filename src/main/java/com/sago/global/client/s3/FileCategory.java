@@ -16,15 +16,25 @@ import java.util.Set;
 public enum FileCategory {
 
     /** 음성 진술 원본 (Step 4). STT 변환 전 원본을 보존한다. */
-    STATEMENT_AUDIO("statements/audio", 20 * 1024 * 1024L, 1,
+    STATEMENT_AUDIO("statements/audio", 20 * 1024 * 1024L, 1, false,
         Set.of("mp3", "wav", "m4a", "aac", "flac", "webm", "ogg")),
 
-    /** 사고 현장 사진. Vision 태깅의 입력이 된다. */
-    ACCIDENT_PHOTO("accidents/photos", 10 * 1024 * 1024L, 10,
+    /**
+     * 사고 현장 사진. Vision 태깅의 입력이 된다.
+     *
+     * 유일하게 부분 성공을 허용한다. 사고 현장은 시간이 지나면 차량이 치워지고 흔적이 사라져
+     * 재촬영이 불가능한 경우가 많다. 10장 중 9번째가 실패했다고 앞의 8장을 되돌리면,
+     * 사용자가 다시 올릴 방법이 없는 자료를 우리가 지우는 셈이 된다.
+     */
+    ACCIDENT_PHOTO("accidents/photos", 10 * 1024 * 1024L, 10, true,
         Set.of("jpg", "jpeg", "png", "heic", "webp")),
 
-    /** 보험증서·진단서 등 문서. OCR의 입력이 된다. */
-    DOCUMENT("documents", 10 * 1024 * 1024L, 5,
+    /**
+     * 보험증서·진단서 등 문서. OCR의 입력이 된다.
+     *
+     * 사진과 달리 부분 성공을 허용하지 않는다. 문서는 언제든 다시 찍을 수 있고 세트로 의미가 있다.
+     */
+    DOCUMENT("documents", 10 * 1024 * 1024L, 5, false,
         Set.of("jpg", "jpeg", "png", "heic", "webp", "pdf")),
 
     /**
@@ -34,22 +44,25 @@ public enum FileCategory {
      * heic를 표시하지 못하는 브라우저가 많아, 받아두면 화면에서 깨진 이미지가 된다.
      * 아이폰 기본 촬영 포맷이 heic이므로 클라이언트가 변환해 보내야 한다.
      */
-    PROFILE_IMAGE("profiles", 5 * 1024 * 1024L, 1,
+    PROFILE_IMAGE("profiles", 5 * 1024 * 1024L, 1, false,
         Set.of("jpg", "jpeg", "png", "webp")),
 
     /** 생성된 AI 경위서 PDF. 사고 이력에서 재다운로드하기 위해 보관한다. */
-    REPORT_PDF("reports", 20 * 1024 * 1024L, 1,
+    REPORT_PDF("reports", 20 * 1024 * 1024L, 1, false,
         Set.of("pdf"));
 
     private final String directory;
     private final long maxSizeBytes;
     private final int maxCount;
+    private final boolean partialSuccessAllowed;
     private final Set<String> allowedExtensions;
 
-    FileCategory(String directory, long maxSizeBytes, int maxCount, Set<String> allowedExtensions) {
+    FileCategory(String directory, long maxSizeBytes, int maxCount, boolean partialSuccessAllowed,
+                 Set<String> allowedExtensions) {
         this.directory = directory;
         this.maxSizeBytes = maxSizeBytes;
         this.maxCount = maxCount;
+        this.partialSuccessAllowed = partialSuccessAllowed;
         this.allowedExtensions = allowedExtensions;
     }
 
@@ -63,6 +76,14 @@ public enum FileCategory {
 
     public int getMaxCount() {
         return maxCount;
+    }
+
+    /**
+     * 일부만 올라가도 그대로 두는 종류인지.
+     * 되돌리는 것이 복구 불가능한 손실을 만드는 자료에만 허용한다.
+     */
+    public boolean isPartialSuccessAllowed() {
+        return partialSuccessAllowed;
     }
 
     public Set<String> getAllowedExtensions() {
