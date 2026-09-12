@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
 
     /**
@@ -22,4 +24,16 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("delete from RefreshToken t where t.user.userId = :userId")
     int deleteAllByUserId(@Param("userId") Long userId);
+
+    /**
+     * 기준 시각 전에 만료된 토큰을 한 번에 지우고 지워진 행 수를 돌려준다.
+     *
+     * expires_at에 인덱스를 두지 않았다. 하루 한 번 도는 정리 작업에서만 쓰는 조건이고, 이 정리 덕분에
+     * 테이블은 "최근 14일 안에 발급된 토큰 + 정리를 기다리는 하루치" 이상으로 커지지 않는다.
+     * 반면 인덱스는 로그인·재발급마다 쓰기 비용을 더한다. 자주 쓰는 경로를 느리게 해서
+     * 드문 경로를 빠르게 할 이유가 없다.
+     */
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query("delete from RefreshToken t where t.expiresAt < :now")
+    int deleteAllExpiredBefore(@Param("now") LocalDateTime now);
 }

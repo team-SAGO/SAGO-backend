@@ -69,6 +69,8 @@ jwt:
   secret: ${JWT_SECRET:}
   access-expiration: ${JWT_ACCESS_EXPIRATION:3600000}      # 1시간 (ms)
   refresh-expiration: ${JWT_REFRESH_EXPIRATION:1209600000} # 14일 (ms)
+  # 만료된 refresh 토큰 행 정리 주기 (한국 시간 기준, 초 분 시 일 월 요일). "-"면 끈다.
+  refresh-cleanup-cron: ${JWT_REFRESH_CLEANUP_CRON:0 0 4 * * *}
 
 # ---- OAuth2 소셜 로그인 (카카오 / 구글) ----
 oauth:
