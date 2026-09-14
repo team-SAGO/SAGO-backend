@@ -1,5 +1,6 @@
 package com.sago.domain.auth;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.jwt.JwtTokenProvider;
@@ -9,6 +10,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.Base64;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -144,5 +151,52 @@ class RefreshTokenStoreTest {
 
         assertThat(stored(mine)).isFalse();
         assertThat(stored(theirs)).isTrue();
+    }
+
+    @Test
+    @DisplayName("만료 정리는 만료된 토큰만 지우고 아직 쓸 수 있는 토큰은 남긴다")
+    void deleteExpiredRemovesOnlyExpiredTokens() {
+        String valid = jwtTokenProvider.createRefreshToken(user.getUserId());
+        refreshTokenStore.save(user, valid);
+        refreshTokenRepository.save(RefreshToken.builder()
+            .user(user)
+            .tokenHash(sha256Hex("expired-device"))
+            .expiresAt(LocalDateTime.now().minusMinutes(1))
+            .build());
+
+        assertThat(refreshTokenStore.deleteExpired()).isEqualTo(1);
+        assertThat(stored("expired-device")).isFalse();
+        assertThat(stored(valid)).isTrue();
+    }
+
+    @Test
+    @DisplayName("만료 정리를 연달아 돌리면 두 번째는 0건이다 — 서버 여러 대가 동시에 돌려도 안전하다")
+    void deleteExpiredIsIdempotent() {
+        refreshTokenRepository.save(RefreshToken.builder()
+            .user(user)
+            .tokenHash(sha256Hex("expired-device"))
+            .expiresAt(LocalDateTime.now().minusDays(1))
+            .build());
+
+        assertThat(refreshTokenStore.deleteExpired()).isEqualTo(1);
+        assertThat(refreshTokenStore.deleteExpired()).isZero();
+    }
+
+    @Test
+    @DisplayName("저장된 만료 시각은 토큰 자체의 만료보다 이르지 않다 — 정리가 살아 있는 토큰을 지우지 않는다")
+    void storedExpiryIsNeverBeforeTokenExpiry() throws Exception {
+        String token = jwtTokenProvider.createRefreshToken(user.getUserId());
+        refreshTokenStore.save(user, token);
+
+        // 서명 검증 없이 exp만 읽는다. 여기서 보려는 건 시각 비교뿐이다.
+        String payload = new String(Base64.getUrlDecoder().decode(token.split("\\.")[1]), StandardCharsets.UTF_8);
+        long expSeconds = new ObjectMapper().readTree(payload).get("exp").asLong();
+        LocalDateTime tokenExpiry = LocalDateTime.ofInstant(Instant.ofEpochSecond(expSeconds), ZoneId.systemDefault());
+
+        RefreshToken row = refreshTokenRepository.findAll().stream()
+            .filter(candidate -> candidate.getTokenHash().equals(sha256Hex(token)))
+            .findFirst()
+            .orElseThrow();
+        assertThat(row.getExpiresAt()).isAfterOrEqualTo(tokenExpiry);
     }
 }
