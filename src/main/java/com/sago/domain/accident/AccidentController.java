@@ -1,16 +1,17 @@
 package com.sago.domain.accident;
 
 import com.sago.domain.accident.dto.AccidentCreateRequest;
+import com.sago.domain.accident.dto.AccidentCreation;
 import com.sago.domain.accident.dto.AccidentResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -31,11 +32,18 @@ public class AccidentController {
         this.accidentService = accidentService;
     }
 
+    /**
+     * 사고 시작.
+     *
+     * 새 사고를 만들면 201, 한 시간 안에 시작한 진행 중 사고가 있어 그것을 돌려주면 200이다.
+     * 200이면 요청 본문은 반영되지 않으므로, 클라이언트는 "진행 중인 사고를 이어서 진행합니다"처럼 안내한다.
+     */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
-    public AccidentResponse create(@AuthenticationPrincipal Long userId,
-                                    @Valid @RequestBody AccidentCreateRequest request) {
-        return accidentService.create(userId, request);
+    public ResponseEntity<AccidentResponse> create(@AuthenticationPrincipal Long userId,
+                                                   @Valid @RequestBody AccidentCreateRequest request) {
+        AccidentCreation result = accidentService.create(userId, request);
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
+            .body(result.accident());
     }
 
     /**

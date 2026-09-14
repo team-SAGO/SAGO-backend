@@ -3,6 +3,8 @@ package com.sago.domain.accident;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.jwt.JwtTokenProvider;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,9 @@ class AccidentControllerTest {
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     private String accessToken;
     private Long userId;
@@ -94,6 +99,78 @@ class AccidentControllerTest {
         assertThat(saved.get(0).isOwnedBy(userId)).isTrue();
         assertThat(saved.get(0).getMemo()).isEqualTo("신호 대기 중 추돌");
         assertThat(saved.get(0).getInjurySelf()).isEqualTo(InjuryLevel.MINOR);
+    }
+
+    @Test
+    @DisplayName("한 시간 안에 다시 누르면 새 사고를 만들지 않고 진행 중인 사고를 200으로 돌려준다")
+    void secondCreateWithinWindowResumesInProgressAccident() throws Exception {
+        String first = mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"VEHICLE\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        long firstId = com.jayway.jsonpath.JsonPath.parse(first).read("$.accidentId", Long.class);
+
+        // 앱을 다시 켜고 다른 유형으로 또 누른 경우. 이미 진행한 체크리스트와 어긋나지 않도록 값은 반영하지 않는다.
+        mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"SINGLE\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.accidentId").value(firstId))
+            .andExpect(jsonPath("$.accidentType").value("VEHICLE"));
+
+        assertThat(accidentRepository.findByUser_UserIdOrderByOccurredAtDesc(userId)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("끝난 사고는 이어 쓰지 않고 새 사고를 만든다")
+    void completedAccidentIsNotResumed() throws Exception {
+        Accident completed = accident(user(), LocalDateTime.now());
+        completed.complete();
+        Long completedId = accidentRepository.saveAndFlush(completed).getAccidentId();
+
+        mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"VEHICLE\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.accidentId").value(org.hamcrest.Matchers.not(completedId.intValue())));
+    }
+
+    @Test
+    @DisplayName("만든 지 한 시간이 지난 진행 중 사고는 이어 쓰지 않는다 — 멈춘 사고에 다음 사고가 붙지 않는다")
+    void staleInProgressAccidentIsNotResumed() throws Exception {
+        Long staleId = accidentRepository.saveAndFlush(accident(user(), LocalDateTime.now())).getAccidentId();
+        // created_at은 갱신 불가 컬럼이라 직접 과거로 돌린다
+        entityManager.createNativeQuery("update accident set created_at = :createdAt where accident_id = :id")
+            .setParameter("createdAt", LocalDateTime.now().minusHours(2))
+            .setParameter("id", staleId)
+            .executeUpdate();
+        entityManager.clear();
+
+        mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"VEHICLE\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.accidentId").value(org.hamcrest.Matchers.not(staleId.intValue())));
+    }
+
+    @Test
+    @DisplayName("다른 회원의 진행 중 사고는 이어 쓰지 않는다")
+    void othersInProgressAccidentIsNotResumed() throws Exception {
+        User stranger = userRepository.save(User.builder().email("other@example.com").build());
+        accidentRepository.saveAndFlush(accident(stranger, LocalDateTime.now()));
+
+        mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"VEHICLE\"}"))
+            .andExpect(status().isCreated());
+
+        assertThat(accidentRepository.findByUser_UserIdOrderByOccurredAtDesc(userId)).hasSize(1);
     }
 
     @Test
