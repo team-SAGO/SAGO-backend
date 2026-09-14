@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -24,7 +25,13 @@ import java.time.LocalDateTime;
  * source로 AI 생성인지 정적 폴백인지 구분한다.
  */
 @Entity
-@Table(name = "checklist_item")
+@Table(
+    name = "checklist_item",
+    // 사고별 항목을 순서대로 읽는 조회가 화면 진입마다 일어난다.
+    indexes = @Index(
+        name = "idx_checklist_item_accident_order",
+        columnList = "accident_id, order_no")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChecklistItem {
@@ -66,5 +73,21 @@ public class ChecklistItem {
     public void complete() {
         this.completed = true;
         this.completedAt = LocalDateTime.now();
+    }
+
+    /**
+     * 완료 표시를 해제한다.
+     *
+     * 사고 직후 급한 상황에서 누르는 화면이라 잘못 체크하는 일이 생긴다.
+     * 되돌릴 수 없으면 사용자가 완료하지 않은 항목을 완료로 남긴 채 다음 단계로 넘어가게 된다.
+     */
+    public void uncomplete() {
+        this.completed = false;
+        this.completedAt = null;
+    }
+
+    /** 소속 사고가 맞는지 확인한다. 다른 사고의 항목을 지정해 수정하는 것을 막는 데 쓴다. */
+    public boolean belongsTo(Long accidentId) {
+        return this.accident != null && this.accident.getAccidentId().equals(accidentId);
     }
 }
