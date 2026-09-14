@@ -3,6 +3,7 @@ package com.sago.global.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sago.global.exception.ErrorResponse;
 import com.sago.global.jwt.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -53,6 +54,10 @@ public class SecurityConfig {
             .httpBasic(basic -> basic.disable())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // 에러 디스패치(/error)는 인가하지 않는다 (#72). 원래 요청은 이미 인가를 통과했거나 거부됐고,
+                // 이 단계에서는 JWT 필터가 다시 돌지 않아 익명으로 보인다. 막으면 필터 등 핸들러 밖에서 난
+                // 오류가 원래 상태 코드 대신 401로 나간다. /error로 직접 들어오는 요청은 REQUEST 디스패치라 여전히 막힌다.
+                .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                 // 헬스체크 및 문서
                 .requestMatchers("/", "/health", "/api/health").permitAll()
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
