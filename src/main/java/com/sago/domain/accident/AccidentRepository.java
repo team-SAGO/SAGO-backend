@@ -6,12 +6,22 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 public interface AccidentRepository extends JpaRepository<Accident, Long> {
 
     List<Accident> findByUser_UserIdOrderByOccurredAtDesc(Long userId);
+
+    /**
+     * 회원의 가장 최근 사고 중 주어진 상태이고 기준 시각 이후에 만들어진 것.
+     *
+     * 인덱스를 따로 두지 않았다. (user_id, occurred_at) 인덱스의 user_id로 회원 행을 먼저 좁히고,
+     * 한 회원의 사고는 많아야 수십 건이라 나머지 조건은 그 안에서 걸러도 충분하다.
+     */
+    Optional<Accident> findFirstByUser_UserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(
+        Long userId, AccidentStatus status, LocalDateTime createdAfter);
 
     /**
      * 사고 행에 쓰기 락을 건다.
