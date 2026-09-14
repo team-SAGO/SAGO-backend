@@ -231,6 +231,12 @@ public class GlobalExceptionHandler {
      * 스프링이 상태 코드를 알고 있는 예외(없는 경로 404, 지원하지 않는 메서드 405, Content-Type 415 등)는
      * 그 코드를 그대로 쓴다. 나머지는 서버 오류라 원인은 로그로만 남기고 일반 안내를 내린다.
      * 여기가 없으면 예상하지 못한 예외가 500이 아니라 401로 나간다.
+     *
+     * <p><b>메서드 보안(@PreAuthorize 등)을 도입할 때 주의:</b> 지금은 접근 통제를 서비스 계층
+     * (getOwnedAccident 등)에서 하고, 스프링 시큐리티 예외는 필터 체인에서만 나서 여기에 닿지 않는다.
+     * 메서드 보안을 쓰면 AccessDeniedException이 디스패치 안에서 나 이 폴백에 걸리고,
+     * 403이어야 할 응답이 500으로 나가며 서버 오류 로그까지 남는다. 그때는 AccessDeniedException
+     * 핸들러를 이 메서드보다 먼저 추가해야 한다.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception e) {
