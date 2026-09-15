@@ -3,7 +3,6 @@ package com.sago.domain.user;
 import com.sago.domain.user.ProfileImageStore.ImageReplacement;
 import com.sago.domain.user.dto.ProfileResponse;
 import com.sago.global.client.s3.FileCategory;
-import com.sago.global.client.s3.S3CommunicationException;
 import com.sago.global.client.s3.S3Uploader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,7 +57,7 @@ class ProfileImageServiceTest {
         ProfileResponse response = profileImageService.upload(1L, image());
 
         assertThat(response.profileImageUrl()).isEqualTo(NEW_URL);
-        verify(s3Uploader, times(1)).delete(OLD_URL);
+        verify(s3Uploader).deleteQuietly(eq(OLD_URL), any());
     }
 
     @Test
@@ -70,7 +69,7 @@ class ProfileImageServiceTest {
 
         profileImageService.upload(1L, image());
 
-        verify(s3Uploader, never()).delete(any());
+        verify(s3Uploader, never()).deleteQuietly(any(), any());
     }
 
     @Test
@@ -84,21 +83,7 @@ class ProfileImageServiceTest {
         assertThatThrownBy(() -> profileImageService.upload(1L, image()))
             .isSameAs(failure);
 
-        verify(s3Uploader, times(1)).delete(NEW_URL);
-    }
-
-    @Test
-    @DisplayName("직전 이미지 삭제가 실패해도 교체는 성공으로 끝난다")
-    void succeedsEvenIfPreviousImageDeleteFails() {
-        when(s3Uploader.upload(any(MultipartFile.class), eq(FileCategory.PROFILE_IMAGE)))
-            .thenReturn(NEW_URL);
-        when(profileImageStore.replaceImage(1L, NEW_URL)).thenReturn(replacement(OLD_URL));
-        doThrow(new S3CommunicationException("삭제 실패")).when(s3Uploader).delete(OLD_URL);
-
-        ProfileResponse response = profileImageService.upload(1L, image());
-
-        // 이미 DB 갱신이 끝난 뒤라, 지난 파일을 못 지웠다고 사용자 요청을 실패시킬 이유는 없다
-        assertThat(response.profileImageUrl()).isEqualTo(NEW_URL);
+        verify(s3Uploader).deleteQuietly(eq(NEW_URL), any());
     }
 
     @Test

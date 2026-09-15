@@ -203,14 +203,26 @@ public class S3Uploader {
      * 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
      */
     private void deleteAllQuietly(List<String> fileUrls) {
-        fileUrls.forEach(this::deleteQuietly);
+        fileUrls.forEach(fileUrl -> deleteQuietly(fileUrl, "업로드 롤백"));
     }
 
-    private void deleteQuietly(String fileUrl) {
+    /**
+     * 되돌리기·정리를 위한 삭제. 실패해도 예외를 던지지 않는다.
+     *
+     * 이 메서드를 부르는 자리는 이미 다른 실패를 처리하는 중이거나(업로드 롤백),
+     * 본래 작업이 끝난 뒤의 뒷정리(이전 이미지 삭제)다. 여기서 터진 예외가 올라가면
+     * 원래 실패 원인이 가려지거나, 이미 성공한 요청이 실패로 뒤집힌다.
+     *
+     * 다만 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
+     *
+     * @param context 어떤 작업의 정리인지 (예: "프로필 이미지 교체"). 로그에서 경로만으로는
+     *                구분되지 않는 호출 지점을 가려내기 위해 받는다.
+     */
+    public void deleteQuietly(String fileUrl, String context) {
         try {
             delete(fileUrl);
         } catch (RuntimeException e) {
-            log.warn("업로드 롤백 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
+            log.warn("{} 중 삭제 실패, S3에 고아 파일이 남습니다: {}", context, fileUrl, e);
         }
     }
 
@@ -230,7 +242,7 @@ public class S3Uploader {
             // putObject가 객체를 저장한 뒤 응답 처리 단계에서 실패했을 수 있다.
             // 그 경우 호출자는 URL을 돌려받지 못해 지울 방법이 없으므로 여기서 정리한다.
             // 실제로 저장되지 않았다면 없는 키를 지우는 셈인데, S3는 이를 성공으로 처리한다.
-            deleteQuietly(toUrl(key));
+            deleteQuietly(toUrl(key), "업로드 실패 정리");
             throw new S3CommunicationException("S3 업로드 실패: " + key, e);
         }
 
