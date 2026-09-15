@@ -1,5 +1,6 @@
 package com.sago.domain.auth;
 
+import com.sago.domain.auth.SocialAccountRegistrar.SignUp;
 import com.sago.domain.auth.dto.LoginResponse;
 import com.sago.domain.auth.dto.TokenResponse;
 import com.sago.domain.user.AuthProvider;
@@ -39,7 +40,7 @@ class AuthServiceTest {
 
     private static final String CODE = "dummy-authorization-code";
     private static final OAuthUserInfo KAKAO_USER =
-        new OAuthUserInfo("kakao-1234", "rider@example.com", "라이더");
+        new OAuthUserInfo("kakao-1234", "rider@example.com", "라이더", true);
 
     private SocialAccountRegistrar registrar;
     private RefreshTokenStore refreshTokenStore;
@@ -70,13 +71,28 @@ class AuthServiceTest {
     @DisplayName("처음 보는 소셜 계정이면 회원을 등록하고 newUser=true로 알려준다")
     void firstLoginRegistersUser() {
         when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.empty());
-        when(registrar.register(eq(AuthProvider.KAKAO), any())).thenReturn(user(1L));
+        when(registrar.registerOrLink(eq(AuthProvider.KAKAO), any())).thenReturn(new SignUp(user(1L), false));
 
         LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
 
         assertThat(response.newUser()).isTrue();
         assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
             .isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("같은 이메일의 기존 회원에 연결되면 새 회원이 아니고, 연결됐다고 알려준다")
+    void linkedLoginIsNotNewUser() {
+        when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.empty());
+        when(registrar.registerOrLink(eq(AuthProvider.KAKAO), any())).thenReturn(new SignUp(user(7L), true));
+
+        LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
+
+        // 온보딩은 기존 회원이 이미 마쳤다
+        assertThat(response.newUser()).isFalse();
+        assertThat(response.accountLinked()).isTrue();
+        assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
+            .isEqualTo(7L);
     }
 
     @Test
@@ -88,7 +104,7 @@ class AuthServiceTest {
         LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
 
         assertThat(response.newUser()).isFalse();
-        verify(registrar, never()).register(any(), any());
+        verify(registrar, never()).registerOrLink(any(), any());
         assertThat(jwtTokenProvider.parseUserId(response.token().accessToken(), TokenType.ACCESS))
             .isEqualTo(7L);
     }
@@ -99,7 +115,7 @@ class AuthServiceTest {
         when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234"))
             .thenReturn(Optional.empty())
             .thenReturn(Optional.of(user(7L)));
-        when(registrar.register(eq(AuthProvider.KAKAO), any()))
+        when(registrar.registerOrLink(eq(AuthProvider.KAKAO), any()))
             .thenThrow(new DataIntegrityViolationException("duplicate"));
 
         LoginResponse response = authService.login(AuthProvider.KAKAO, CODE);
@@ -112,7 +128,7 @@ class AuthServiceTest {
     @DisplayName("제약 위반 후에도 회원을 못 찾으면 원래 예외를 그대로 올린다")
     void unrecoverableConstraintViolationIsRethrown() {
         when(registrar.findUser(AuthProvider.KAKAO, "kakao-1234")).thenReturn(Optional.empty());
-        when(registrar.register(eq(AuthProvider.KAKAO), any()))
+        when(registrar.registerOrLink(eq(AuthProvider.KAKAO), any()))
             .thenThrow(new DataIntegrityViolationException("duplicate"));
 
         assertThatThrownBy(() -> authService.login(AuthProvider.KAKAO, CODE))
