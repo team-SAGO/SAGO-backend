@@ -43,26 +43,63 @@ public class SocialAccountRegistrar {
     }
 
     /**
-     * 회원과 소셜 연결 정보를 함께 만든다.
+     * 처음 보는 소셜 계정을 회원에 붙인다. 같은 사람의 기존 회원이 확실하면 거기에 연결하고,
+     * 아니면 회원을 새로 만든다 (#33).
+     *
+     * 이메일이 같다는 것만으로는 같은 사람이라고 볼 수 없어서, <b>양쪽 모두 검증된 이메일일 때만</b> 연결한다.
+     * <ul>
+     *   <li>들어오는 쪽이 미검증이면: 공격자가 피해자 이메일을 적은 계정으로 피해자 회원에 붙을 수 있다.</li>
+     *   <li>기존 회원이 미검증이면: 공격자가 피해자 이메일로 먼저 가입해 두었다가, 피해자가 검증된 계정으로
+     *       로그인하는 순간 공격자 회원에 붙어 피해자의 사고 기록이 공격자에게 쌓인다.</li>
+     * </ul>
+     * 탈퇴한 회원에는 연결하지 않는다. 탈퇴 회원 처리(#57)가 정해지지 않았고, 연결하면 곧바로 탈퇴 회원
+     * 로그인 거부에 걸린다.
      *
      * 같은 소셜 계정으로 동시에 두 번 로그인이 들어오면 유니크 제약에 걸려
      * DataIntegrityViolationException이 나간다. 이때 이 트랜잭션은 온전히 롤백되므로
      * 회원만 남는 일은 없고, 호출자가 새 트랜잭션으로 재조회하면 먼저 커밋된 회원을 얻는다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public User register(AuthProvider provider, OAuthUserInfo userInfo) {
+    public SignUp registerOrLink(AuthProvider provider, OAuthUserInfo userInfo) {
+        Optional<User> sameVerifiedPerson = findVerifiedAccount(userInfo);
+        if (sameVerifiedPerson.isPresent()) {
+            connect(sameVerifiedPerson.get(), provider, userInfo);
+            return new SignUp(sameVerifiedPerson.get(), true);
+        }
+
+        boolean hasRealEmail = userInfo.email() != null && !userInfo.email().isBlank();
         User user = userRepository.save(User.builder()
             .email(resolveEmail(provider, userInfo))
             .nickname(userInfo.nickname())
+            // 자리표시 주소는 실재하지 않으므로 검증된 것으로 남기지 않는다.
+            .emailVerified(hasRealEmail && userInfo.emailVerified())
             .build());
+        connect(user, provider, userInfo);
 
+        return new SignUp(user, false);
+    }
+
+    private Optional<User> findVerifiedAccount(OAuthUserInfo userInfo) {
+        if (!userInfo.emailVerified() || userInfo.email() == null || userInfo.email().isBlank()) {
+            return Optional.empty();
+        }
+        return userRepository
+            .findFirstByEmailAndEmailVerifiedTrueAndDeletedAtIsNullOrderByCreatedAtAscUserIdAsc(userInfo.email());
+    }
+
+    private void connect(User user, AuthProvider provider, OAuthUserInfo userInfo) {
         socialAuthRepository.save(SocialAuth.builder()
             .user(user)
             .provider(provider)
             .providerUserId(userInfo.providerUserId())
             .build());
+    }
 
-        return user;
+    /**
+     * @param user   로그인할 회원
+     * @param linked 새로 만들지 않고 같은 이메일의 기존 회원에 연결했으면 true
+     */
+    public record SignUp(User user, boolean linked) {
     }
 
     /**
