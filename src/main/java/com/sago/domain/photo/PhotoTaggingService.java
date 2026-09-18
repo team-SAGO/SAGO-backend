@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sago.global.client.gemini.GeminiApiException;
 import com.sago.global.client.gemini.GeminiClient;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -15,6 +14,10 @@ import java.util.List;
  * Step 7 — 사고 사진에서 파손 부위·손상 유형·주요 객체를 인식해 태깅 (기획안 9.2 Prompt 4).
  * 인식 실패·오류 시 빈 결과를 반환한다 — 태깅이 안 돼도 다음 단계 진행을 막지 않고,
  * 사용자가 직접 태그를 수정할 수 있도록 한다(기획안 10절 예외처리).
+ *
+ * 저장은 하지 않는다. Gemini Vision 호출이 트랜잭션 안에 들어가면 응답이 올 때까지
+ * DB 커넥션을 붙잡게 되어, 저장은 호출자를 거쳐 {@link PhotoTagStore}가 짧은
+ * 트랜잭션으로 처리한다 (#48의 ChecklistGenerationService와 같은 이유).
  */
 @Service
 public class PhotoTaggingService {
@@ -23,18 +26,21 @@ public class PhotoTaggingService {
     private static final int LABEL_MAX_LENGTH = 100;
 
     private final GeminiClient geminiClient;
-    private final PhotoTagRepository photoTagRepository;
+    private final PhotoTagStore photoTagStore;
     private final ObjectMapper objectMapper;
 
     public PhotoTaggingService(GeminiClient geminiClient,
-                                PhotoTagRepository photoTagRepository,
+                                PhotoTagStore photoTagStore,
                                 ObjectMapper objectMapper) {
         this.geminiClient = geminiClient;
-        this.photoTagRepository = photoTagRepository;
+        this.photoTagStore = photoTagStore;
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
+    /**
+     * 태깅 결과를 저장까지 마치고 돌려준다.
+     * 외부 호출(Gemini Vision)이 들어 있으므로 트랜잭션 밖에서 부를 것.
+     */
     public PhotoTaggingResult tagPhoto(Photo photo, byte[] imageBytes, String mimeType) {
         String responseText;
         try {
@@ -67,8 +73,7 @@ public class PhotoTaggingService {
         }
 
         // 같은 사진을 재태깅해도 중복 저장되지 않도록, 기존 태그를 지우고 새로 저장한다
-        photoTagRepository.deleteByPhoto_PhotoId(photo.getPhotoId());
-        List<PhotoTag> savedTags = photoTagRepository.saveAll(tags);
+        List<PhotoTag> savedTags = photoTagStore.replace(photo.getPhotoId(), tags);
         List<String> additionalConfirmationItems = extractTextArray(result, "additionalConfirmationItems");
 
         return new PhotoTaggingResult(savedTags, additionalConfirmationItems);
