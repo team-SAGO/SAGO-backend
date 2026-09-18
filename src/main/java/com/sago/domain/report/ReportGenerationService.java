@@ -68,12 +68,20 @@ public class ReportGenerationService {
             return Optional.empty();
         }
 
-        List<String> summary = readLines(result, "summary");
+        Optional<List<String>> summaryLines = readLines(result, "summary");
+        if (summaryLines.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> summary = summaryLines.get();
         if (summary.isEmpty() || summary.size() > SUMMARY_MAX_LINES) {
             return Optional.empty();
         }
 
-        List<String> unverifiedItems = readLines(result, "unverifiedItems");
+        Optional<List<String>> unverifiedItemLines = readLines(result, "unverifiedItems");
+        if (unverifiedItemLines.isEmpty()) {
+            return Optional.empty();
+        }
+        List<String> unverifiedItems = unverifiedItemLines.get();
         if (unverifiedItems.size() > UNVERIFIED_ITEM_MAX_LINES) {
             return Optional.empty();
         }
@@ -81,6 +89,9 @@ public class ReportGenerationService {
         String disclaimer = readText(result, "disclaimer");
         if (disclaimer == null || disclaimer.isBlank()) {
             disclaimer = DEFAULT_DISCLAIMER;
+        } else if (disclaimer.length() > LINE_MAX_LENGTH) {
+            // Report.disclaimer 컬럼이 255자라, 넘으면 저장 단계에서 실패한다. 여기서 먼저 걸러낸다.
+            return Optional.empty();
         }
 
         return Optional.of(Report.builder()
@@ -98,19 +109,24 @@ public class ReportGenerationService {
             : null;
     }
 
-    private List<String> readLines(JsonNode result, String fieldName) {
+    /**
+     * 문자열 배열 필드를 읽는다. 필드가 없거나 배열이 아니거나 항목 형식이 잘못됐으면
+     * 빈 Optional을 돌려준다 — "정상적으로 비어 있음"과 "형식이 잘못됨"을 구분해야
+     * unverifiedItems처럼 빈 배열이 유효한 필드에서 형식 오류를 빈 배열로 잘못 넘기지 않는다.
+     */
+    private Optional<List<String>> readLines(JsonNode result, String fieldName) {
         if (!result.has(fieldName) || !result.get(fieldName).isArray()) {
-            return List.of();
+            return Optional.empty();
         }
 
         List<String> lines = new ArrayList<>();
         for (JsonNode item : result.get(fieldName)) {
             if (!item.isTextual() || item.asText().isBlank() || item.asText().length() > LINE_MAX_LENGTH) {
-                return List.of();
+                return Optional.empty();
             }
             lines.add(item.asText());
         }
-        return lines;
+        return Optional.of(lines);
     }
 
     private String buildPrompt(Accident accident, String statementText,

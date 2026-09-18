@@ -14,6 +14,7 @@ import com.sago.global.client.gemini.GeminiClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -23,6 +24,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -117,23 +119,50 @@ class ReportGenerationServiceTest {
             .round(QuestionRound.INITIAL)
             .build();
 
-        Optional<Report> report = generationService.generateReport(
-            accident(), "진술", List.of(unanswered), List.of());
+        generationService.generateReport(accident(), "진술", List.of(unanswered), List.of());
 
-        assertThat(report).isPresent();
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(geminiClient).generateContent(prompt.capture());
+        assertThat(prompt.getValue()).doesNotContain("신호는 어땠나요?");
     }
 
     @Test
-    @DisplayName("사진 태그가 있어도 정상적으로 경위서를 생성한다")
+    @DisplayName("사진 태그를 프롬프트에 포함한다")
     void includesPhotoTagsInPrompt() {
         when(geminiClient.generateContent(anyString())).thenReturn("""
             {"narrative": "본인은 직진 중이었습니다.", "summary": ["교차로에서 접촉"], "unverifiedItems": []}
             """);
 
-        Optional<Report> report = generationService.generateReport(
-            accident(), "진술", List.of(), List.of(photoTag()));
+        generationService.generateReport(accident(), "진술", List.of(), List.of(photoTag()));
 
-        assertThat(report).isPresent();
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(geminiClient).generateContent(prompt.capture());
+        assertThat(prompt.getValue()).contains("범퍼 찌그러짐");
+    }
+
+    @Test
+    @DisplayName("unverifiedItems가 배열이 아니면 형식 오류로 보고 빈 Optional을 돌려준다 — 빈 배열과 구분해야 한다")
+    void returnsEmptyWhenUnverifiedItemsIsNotArray() {
+        when(geminiClient.generateContent(anyString())).thenReturn("""
+            {"narrative": "본인은 직진 중이었습니다.", "summary": ["교차로에서 접촉"], "unverifiedItems": "모름"}
+            """);
+
+        Optional<Report> report = generationService.generateReport(accident(), "진술", List.of(), List.of());
+
+        assertThat(report).isEmpty();
+    }
+
+    @Test
+    @DisplayName("disclaimer가 255자를 넘으면 빈 Optional을 돌려준다 — Report.disclaimer 컬럼 길이를 넘으면 저장이 실패한다")
+    void returnsEmptyWhenDisclaimerTooLong() {
+        String tooLong = "안".repeat(256);
+        when(geminiClient.generateContent(anyString())).thenReturn(("""
+            {"narrative": "본인은 직진 중이었습니다.", "summary": ["교차로에서 접촉"], "unverifiedItems": [], "disclaimer": "%s"}
+            """).formatted(tooLong));
+
+        Optional<Report> report = generationService.generateReport(accident(), "진술", List.of(), List.of());
+
+        assertThat(report).isEmpty();
     }
 
     @Test
