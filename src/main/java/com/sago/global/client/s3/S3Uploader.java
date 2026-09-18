@@ -175,6 +175,10 @@ public class S3Uploader {
 
     /**
      * 업로드된 파일을 삭제한다. 이미 없는 객체를 지워도 S3는 성공으로 응답한다.
+     *
+     * 실패하면 예외를 던진다. 업로드 되돌리기나 이전 파일 정리처럼 <b>다른 작업의 뒷정리</b>라면
+     * {@link #deleteQuietly}를 쓴다 — 여기서 던진 예외가 원래 실패 원인을 가리거나,
+     * 이미 성공한 요청을 실패로 뒤집을 수 있다.
      */
     public void delete(String fileUrl) {
         String key = extractKey(fileUrl);
