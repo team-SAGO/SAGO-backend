@@ -58,6 +58,13 @@ aws:
 stt:
   language-code: ${STT_LANGUAGE_CODE:ko-KR}
 
+# ---- 사고 ----
+accident:
+  # 진행 중인 사고를 이어서 쓰는 기간 (#34). 사고를 만든 시각부터 센다.
+  # 버튼 연타·재시도·앱 재시작으로 생기는 중복은 대부분 몇 분 안에 일어난다.
+  # 이 기간 안에는 새 사고를 만들 수 없으므로, 길게 잡으려면 사고 종료 API 사용을 함께 안내해야 한다.
+  resume-window: ${ACCIDENT_RESUME_WINDOW:1h}
+
 # ---- CORS (프론트엔드 오리진 허용) ----
 # 프론트가 별도 레포·별도 오리진이라 허용 목록이 필요하다.
 # 배포 도메인이 정해지면 CORS_ALLOWED_ORIGINS 환경변수로 덮어쓴다 (쉼표 구분).
