@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,7 +35,7 @@ class AccidentServiceTest {
     void setUp() {
         accidentRepository = mock(AccidentRepository.class);
         userRepository = mock(UserRepository.class);
-        accidentService = new AccidentService(accidentRepository, userRepository);
+        accidentService = new AccidentService(accidentRepository, userRepository, Duration.ofHours(1));
 
         setUserId(owner, 1L);
         when(accidentRepository.save(any(Accident.class)))
@@ -209,6 +210,36 @@ class AccidentServiceTest {
         when(accidentRepository.findById(10L)).thenReturn(Optional.of(accident));
 
         assertThat(accidentService.getOwnedAccident(1L, 10L)).isSameAs(accident);
+    }
+
+    @Test
+    @DisplayName("사고를 끝내면 상태가 COMPLETED가 된다")
+    void completeMarksAccidentCompleted() {
+        Accident accident = accidentOf(LocalDateTime.now());
+        when(accidentRepository.findById(10L)).thenReturn(Optional.of(accident));
+
+        var response = accidentService.complete(1L, 10L);
+
+        assertThat(response.status()).isEqualTo(AccidentStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("이미 끝난 사고를 다시 끝내도 오류가 아니다")
+    void completeIsIdempotent() {
+        Accident accident = accidentOf(LocalDateTime.now());
+        accident.complete();
+        when(accidentRepository.findById(10L)).thenReturn(Optional.of(accident));
+
+        assertThat(accidentService.complete(1L, 10L).status()).isEqualTo(AccidentStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("남의 사고는 끝낼 수 없다")
+    void strangerCannotCompleteAccident() {
+        when(accidentRepository.findById(10L)).thenReturn(Optional.of(accidentOf(LocalDateTime.now())));
+
+        assertThatThrownBy(() -> accidentService.complete(999L, 10L))
+            .isInstanceOf(AccidentNotFoundException.class);
     }
 
     private Accident accidentOf(LocalDateTime occurredAt) {

@@ -230,6 +230,53 @@ class AccidentControllerTest {
             .andExpect(jsonPath("$.code").value("ACCIDENT_NOT_FOUND"));
     }
 
+    @Test
+    @DisplayName("사고를 끝내면 다음 요청은 이어 쓰지 않고 새 사고를 만든다")
+    void completingAccidentAllowsNextAccident() throws Exception {
+        String first = mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"VEHICLE\"}"))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        long firstId = com.jayway.jsonpath.JsonPath.parse(first).read("$.accidentId", Long.class);
+
+        mockMvc.perform(post("/api/accidents/{id}/complete", firstId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        // 30분 뒤 진짜 다음 사고가 났을 때, 이전 사고로 흡수되지 않아야 한다
+        mockMvc.perform(post("/api/accidents")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"accidentType\":\"SINGLE\"}"))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.accidentId").value(org.hamcrest.Matchers.not((int) firstId)))
+            .andExpect(jsonPath("$.accidentType").value("SINGLE"));
+    }
+
+    @Test
+    @DisplayName("남의 사고는 끝낼 수 없다")
+    void strangerCannotCompleteAccident() throws Exception {
+        User stranger = userRepository.save(User.builder().email("other@example.com").build());
+        Long id = accidentRepository.saveAndFlush(accident(stranger, LocalDateTime.now())).getAccidentId();
+
+        mockMvc.perform(post("/api/accidents/{id}/complete", id)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("ACCIDENT_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("토큰 없이 사고를 끝낼 수 없다")
+    void completeRequiresAuthentication() throws Exception {
+        Long id = accidentRepository.saveAndFlush(accident(user(), LocalDateTime.now())).getAccidentId();
+
+        mockMvc.perform(post("/api/accidents/{id}/complete", id))
+            .andExpect(status().isUnauthorized());
+    }
+
     private User user() {
         return userRepository.findById(userId).orElseThrow();
     }

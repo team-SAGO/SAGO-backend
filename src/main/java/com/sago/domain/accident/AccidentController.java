@@ -35,8 +35,9 @@ public class AccidentController {
     /**
      * 사고 시작.
      *
-     * 새 사고를 만들면 201, 한 시간 안에 시작한 진행 중 사고가 있어 그것을 돌려주면 200이다.
+     * 새 사고를 만들면 201, 설정한 기간 안에 시작한 진행 중 사고가 있어 그것을 돌려주면 200이다.
      * 200이면 요청 본문은 반영되지 않으므로, 클라이언트는 "진행 중인 사고를 이어서 진행합니다"처럼 안내한다.
+     * 다른 사고라면 사용자가 이전 사고를 종료(POST /{accidentId}/complete)한 뒤 다시 시작하면 된다.
      */
     @PostMapping
     public ResponseEntity<AccidentResponse> create(@AuthenticationPrincipal Long userId,
@@ -44,6 +45,18 @@ public class AccidentController {
         AccidentCreation result = accidentService.create(userId, request);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK)
             .body(result.accident());
+    }
+
+    /**
+     * 사고 처리 종료.
+     *
+     * 끝낸 사고는 이어 쓰기 대상에서 빠지므로, 다음에 사고 발생 버튼을 누르면 새 사고가 만들어진다.
+     * 이미 끝난 사고에 다시 불러도 성공한다.
+     */
+    @PostMapping("/{accidentId}/complete")
+    public AccidentResponse complete(@AuthenticationPrincipal Long userId,
+                                     @PathVariable Long accidentId) {
+        return accidentService.complete(userId, accidentId);
     }
 
     /**
