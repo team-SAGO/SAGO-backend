@@ -28,7 +28,7 @@ import java.util.List;
  * AI가 생성한 사고 경위서 (Step 9, Prompt 6). narrative가 육하원칙 기반 본문이고,
  * summary·unverifiedItems는 사용자가 빠르게 검토할 수 있도록 뽑아낸 요약과 미확인 항목이다.
  *
- * pdfPath는 이 경위서를 확정한 뒤 사고보고서(PDF)를 생성하는 단계에서 채워진다.
+ * pdfUrl은 이 경위서를 확정한 뒤 사고보고서(PDF)를 생성하는 단계에서 채워진다.
  */
 @Entity
 @Table(name = "report")
@@ -70,8 +70,10 @@ public class Report {
     @Column(name = "version", nullable = false)
     private int version;
 
-    @Column(name = "pdf_path", length = 512)
-    private String pdfPath;
+    // photo.file_url·statement.audio_file_url·user.profile_image_url과 같은 규칙 — S3Uploader가
+    // 저장·삭제·presigned 발급 모두 URL에서 키를 꺼내 처리하므로, 여기도 전체 URL을 담고 _url로 부른다.
+    @Column(name = "pdf_url", length = 512)
+    private String pdfUrl;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -77,6 +77,9 @@ public class ReportGenerationService {
             return Optional.empty();
         }
 
+        // 항목 하나가 형식에 안 맞는다고 그 항목만 빼거나 잘라내지 않는다. unverifiedItems는
+        // "이건 추정이다"라는 경고라, 경고가 조용히 사라지면 추정이 사실처럼 읽히게 된다.
+        // 잘라내도 문장이 중간에 끊겨 의미가 바뀔 수 있어, 통째로 실패시키는 쪽이 더 안전하다.
         Optional<List<String>> unverifiedItemLines = readLines(result, "unverifiedItems");
         if (unverifiedItemLines.isEmpty()) {
             return Optional.empty();
