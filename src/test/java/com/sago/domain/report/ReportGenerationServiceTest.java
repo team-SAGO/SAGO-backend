@@ -63,6 +63,16 @@ class ReportGenerationServiceTest {
     }
 
     @Test
+    @DisplayName("응답이 빈 문자열이면 빈 Optional을 돌려준다 — readTree(\"\")는 예외 대신 null을 돌려준다")
+    void returnsEmptyWhenResponseIsBlank() {
+        when(geminiClient.generateContent(anyString())).thenReturn("");
+
+        Optional<Report> report = generationService.generateReport(accident(), "진술", List.of(), List.of());
+
+        assertThat(report).isEmpty();
+    }
+
+    @Test
     @DisplayName("narrative가 비어 있으면 빈 Optional을 돌려준다")
     void returnsEmptyWhenNarrativeIsBlank() {
         when(geminiClient.generateContent(anyString())).thenReturn("""

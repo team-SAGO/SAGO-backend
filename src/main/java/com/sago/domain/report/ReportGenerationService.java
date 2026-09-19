@@ -63,6 +63,12 @@ public class ReportGenerationService {
             return Optional.empty();
         }
 
+        // json이 빈 문자열이면 readTree가 예외 대신 null을 돌려준다(Jackson 특성).
+        // 여기서 걸러내지 않으면 바로 다음 줄에서 NPE가 나 빈 Optional 계약이 깨진다.
+        if (result == null) {
+            return Optional.empty();
+        }
+
         String narrative = readText(result, "narrative");
         if (narrative == null || narrative.isBlank()) {
             return Optional.empty();
