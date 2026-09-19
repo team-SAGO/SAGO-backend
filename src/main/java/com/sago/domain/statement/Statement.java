@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -22,7 +23,14 @@ import java.time.LocalDateTime;
  * 사고 상황에 대한 음성 진술 (Step 4). 원본 음성 파일과 STT 변환 텍스트를 함께 보관한다.
  */
 @Entity
-@Table(name = "statement")
+@Table(
+    name = "statement",
+    // 사고별로 진술 시간 순으로 조회한다. 사고 하나에 진술이 여러 건 쌓일 수 있어,
+    // 정렬까지 인덱스로 해결하도록 created_at을 함께 잡는다.
+    indexes = @Index(
+        name = "idx_statement_accident_created",
+        columnList = "accident_id, created_at")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Statement {
