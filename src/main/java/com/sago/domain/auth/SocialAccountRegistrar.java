@@ -6,6 +6,7 @@ import com.sago.domain.user.SocialAuthRepository;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.client.oauth.OAuthUserInfo;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,15 @@ public class SocialAccountRegistrar {
      * 탈퇴한 회원에는 연결하지 않는다. 탈퇴 회원 처리(#57)가 정해지지 않았고, 연결하면 곧바로 탈퇴 회원
      * 로그인 거부에 걸린다.
      *
+     * <p><b>알려진 한계 두 가지</b> (#80)
+     * <ul>
+     *   <li>같은 이메일로 서로 다른 제공자에서 <b>거의 동시에 처음</b> 로그인하면, 양쪽 다 "기존 회원 없음"을
+     *       보고 회원이 둘 만들어질 수 있다. email에 유니크 제약이 없어 DB가 막아주지 못한다. 결과는
+     *       "연결되지 않음"이라 이 기능 이전과 같고 탈취로 이어지지는 않는다.</li>
+     *   <li>연결 사실을 <b>원래 계정 주인에게</b> 따로 알릴 수단이 없다. 메일 같은 별도 채널 알림은
+     *       인증에서 통상적인 방어인데, 지금은 발송 수단 자체가 없다.</li>
+     * </ul>
+     *
      * 같은 소셜 계정으로 동시에 두 번 로그인이 들어오면 유니크 제약에 걸려
      * DataIntegrityViolationException이 나간다. 이때 이 트랜잭션은 온전히 롤백되므로
      * 회원만 남는 일은 없고, 호출자가 새 트랜잭션으로 재조회하면 먼저 커밋된 회원을 얻는다.
@@ -83,8 +93,9 @@ public class SocialAccountRegistrar {
         if (!userInfo.emailVerified() || userInfo.email() == null || userInfo.email().isBlank()) {
             return Optional.empty();
         }
-        return userRepository
-            .findFirstByEmailAndEmailVerifiedTrueAndDeletedAtIsNullOrderByCreatedAtAscUserIdAsc(userInfo.email());
+        return userRepository.findVerifiedByEmailIgnoreCase(userInfo.email(), PageRequest.of(0, 1))
+            .stream()
+            .findFirst();
     }
 
     private void connect(User user, AuthProvider provider, OAuthUserInfo userInfo) {

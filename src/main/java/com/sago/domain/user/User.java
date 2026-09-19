@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
@@ -23,11 +22,7 @@ import java.time.LocalDateTime;
  * 사고 기록이 보험 처리 근거 자료라 회원이 나가더라도 함께 지워지면 안 되기 때문이다.
  */
 @Entity
-@Table(
-    name = "\"user\"",
-    // 처음 보는 소셜 계정으로 로그인하면 같은 이메일의 기존 회원을 찾는다 (#33).
-    indexes = @Index(name = "idx_user_email", columnList = "email")
-)
+@Table(name = "\"user\"")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class User {

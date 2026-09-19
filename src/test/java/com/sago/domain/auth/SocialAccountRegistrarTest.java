@@ -123,6 +123,26 @@ class SocialAccountRegistrarTest {
     }
 
     @Test
+    @DisplayName("대소문자만 다른 같은 이메일도 같은 사람으로 보고 연결한다")
+    void linksIgnoringEmailCase() {
+        try {
+            // 제공자마다 저장된 표기가 다를 수 있다. 메일함은 같으므로 같은 사람이다.
+            User kakaoUser = registrar.registerOrLink(AuthProvider.KAKAO,
+                new OAuthUserInfo("kakao-case", "Rider@Example.com", "라이더", true)).user();
+
+            SignUp googleLogin = registrar.registerOrLink(AuthProvider.GOOGLE,
+                new OAuthUserInfo("google-case", "rider@example.com", "라이더", true));
+
+            assertThat(googleLogin.linked()).isTrue();
+            assertThat(googleLogin.user().getUserId()).isEqualTo(kakaoUser.getUserId());
+            assertThat(userRepository.count()).isEqualTo(1);
+        } finally {
+            socialAuthRepository.deleteAll();
+            userRepository.deleteAll();
+        }
+    }
+
+    @Test
     @DisplayName("들어오는 계정의 이메일이 미검증이면 연결하지 않고 새로 가입한다")
     void doesNotLinkUnverifiedIncomingEmail() {
         try {
