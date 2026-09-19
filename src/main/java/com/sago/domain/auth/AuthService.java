@@ -1,5 +1,6 @@
 package com.sago.domain.auth;
 
+import com.sago.domain.auth.SocialAccountRegistrar.SignUp;
 import com.sago.domain.auth.dto.LoginResponse;
 import com.sago.domain.auth.dto.TokenResponse;
 import com.sago.domain.user.AuthProvider;
@@ -60,8 +61,12 @@ public class AuthService {
         Optional<User> existing =
             socialAccountRegistrar.findUser(provider, userInfo.providerUserId());
 
-        boolean newUser = existing.isEmpty();
-        User user = existing.orElseGet(() -> registerOrRecover(provider, userInfo));
+        SignUp signUp = existing
+            .map(user -> new SignUp(user, false))
+            .orElseGet(() -> registerOrRecover(provider, userInfo));
+        User user = signUp.user();
+        // 기존 회원에 연결됐으면 온보딩(약관·프로필)은 이미 끝난 회원이다.
+        boolean newUser = existing.isEmpty() && !signUp.linked();
 
         // 탈퇴 회원은 로그인을 막는다. soft delete라 사고 기록이 남아 있어 그냥 통과시키면
         // 탈퇴한 계정으로 기존 데이터에 다시 접근하게 된다. 복구 정책은 팀 논의 후 정할 것.
@@ -69,7 +74,7 @@ public class AuthService {
             throw new WithdrawnUserException("탈퇴한 회원입니다. 고객센터를 통해 복구를 요청해주세요.");
         }
 
-        return new LoginResponse(issueTokens(user), newUser);
+        return new LoginResponse(issueTokens(user), newUser, signUp.linked());
     }
 
     /**
@@ -85,11 +90,12 @@ public class AuthService {
      * 이때는 먼저 커밋된 쪽을 정답으로 보고 새 트랜잭션에서 다시 조회한다 —
      * 등록 트랜잭션은 이미 롤백되었으므로 재조회는 깨끗한 상태에서 이뤄진다.
      */
-    private User registerOrRecover(AuthProvider provider, OAuthUserInfo userInfo) {
+    private SignUp registerOrRecover(AuthProvider provider, OAuthUserInfo userInfo) {
         try {
-            return socialAccountRegistrar.register(provider, userInfo);
+            return socialAccountRegistrar.registerOrLink(provider, userInfo);
         } catch (DataIntegrityViolationException e) {
             return socialAccountRegistrar.findUser(provider, userInfo.providerUserId())
+                .map(user -> new SignUp(user, false))
                 .orElseThrow(() -> e);
         }
     }

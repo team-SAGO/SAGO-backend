@@ -84,11 +84,22 @@ public class GoogleOAuthClient implements OAuthClient {
             throw new OAuthApiException("구글 사용자 정보 응답에 sub가 없습니다.");
         }
 
+        return toUserInfo(response);
+    }
+
+    /**
+     * 구글 사용자 정보(v3 userinfo) 응답을 해석한다. 응답 형식만 따로 검증할 수 있도록 떼어 두었다.
+     *
+     * email_verified가 참일 때만 검증된 이메일로 본다. 값이 빠져 있으면 거짓으로 본다 —
+     * 기존 회원 연결은 틀렸을 때 계정 탈취로 이어져 보수적으로 판단한다.
+     */
+    static OAuthUserInfo toUserInfo(JsonNode response) {
         String providerUserId = response.get("sub").asText();
         String email = response.hasNonNull("email") ? response.get("email").asText() : null;
         String nickname = response.hasNonNull("name") ? response.get("name").asText() : null;
+        boolean emailVerified = email != null && response.path("email_verified").asBoolean(false);
 
-        return new OAuthUserInfo(providerUserId, email, nickname);
+        return new OAuthUserInfo(providerUserId, email, nickname, emailVerified);
     }
 
     private RestClient buildRestClient() {
