@@ -105,7 +105,9 @@ class FlywayMigrationTest {
             "select index_name from information_schema.indexes "
                 + "where upper(table_schema) = 'PUBLIC'");
 
-        assertThat(indexes).contains("idx_accident_user_occurred", "idx_photo_accident_created",
+        assertThat(indexes).contains(
+            "idx_accident_user_occurred", "idx_checklist_item_accident_order",
+            "idx_contact_log_accident_contacted", "idx_photo_accident_created",
             "idx_statement_accident_created", "idx_terms_agreement_user_type");
     }
 }

@@ -4,7 +4,9 @@ import jakarta.persistence.Column;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import jakarta.persistence.metamodel.EntityType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -89,6 +91,44 @@ class SchemaMatchesEntitiesTest {
 
         // 여기서 실패하면 enum에 상수를 추가하고 체크 제약 교체 스크립트(V__)를 빠뜨린 것이다
         assertThat(missing).as("체크 제약이 허용하지 않는 enum 값").isEmpty();
+    }
+
+    /**
+     * validate는 인덱스와 유니크 제약도 보지 않는다. 엔티티에 {@code @Index}나 {@code @UniqueConstraint}를
+     * 추가하고 스크립트를 빠뜨리면 컬럼 검사를 모두 통과한다.
+     *
+     * 특히 유니크 제약은 동시 요청 방어에 쓰이는 것이 있어서(중복 가입 차단, 토큰 회전 경합 판정)
+     * 빠지면 방어가 조용히 사라진다. 엔티티에 선언된 이름이 DB에 모두 있는지 확인한다.
+     */
+    @Test
+    @DisplayName("엔티티에 선언한 인덱스와 유니크 제약이 모두 DB에 있다")
+    void declaredIndexesAndUniqueConstraintsExist() {
+        List<String> indexesInDb = jdbcTemplate.queryForList(
+            "select lower(index_name) from information_schema.indexes", String.class);
+        List<String> uniquesInDb = jdbcTemplate.queryForList(
+            "select lower(constraint_name) from information_schema.table_constraints "
+                + "where constraint_type = 'UNIQUE'", String.class);
+
+        List<String> missing = new ArrayList<>();
+        for (EntityType<?> entity : entityManagerFactory.getMetamodel().getEntities()) {
+            Table table = entity.getJavaType().getAnnotation(Table.class);
+            if (table == null) {
+                continue;
+            }
+            for (Index index : table.indexes()) {
+                if (!indexesInDb.contains(index.name().toLowerCase(Locale.ROOT))) {
+                    missing.add("index " + index.name());
+                }
+            }
+            for (UniqueConstraint unique : table.uniqueConstraints()) {
+                if (!uniquesInDb.contains(unique.name().toLowerCase(Locale.ROOT))) {
+                    missing.add("unique " + unique.name());
+                }
+            }
+        }
+
+        // 여기서 실패하면 엔티티에 인덱스·유니크 제약을 추가하고 스크립트(V__)를 빠뜨린 것이다
+        assertThat(missing).as("DB에 없는 인덱스·유니크 제약").isEmpty();
     }
 
     private String checkClauseFor(String tableName, String columnName) {
