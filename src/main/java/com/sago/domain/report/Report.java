@@ -16,6 +16,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
@@ -31,7 +32,12 @@ import java.util.List;
  * pdfUrl은 이 경위서를 확정한 뒤 사고보고서(PDF)를 생성하는 단계에서 채워진다.
  */
 @Entity
-@Table(name = "report")
+@Table(
+    name = "report",
+    // 사고 하나에 경위서는 한 건이다 (#86). 재생성·수정은 이 행을 갈아끼우며 version을 올린다.
+    // 제약을 DB에도 두는 것은, 동시에 두 번 생성 요청이 와도 두 건이 남지 않게 하기 위해서다.
+    uniqueConstraints = @UniqueConstraint(name = "uk_report_accident", columnNames = "accident_id")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Report {
@@ -75,6 +81,9 @@ public class Report {
     @Column(name = "pdf_url", length = 512)
     private String pdfUrl;
 
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -93,5 +102,40 @@ public class Report {
     @PrePersist
     private void prePersist() {
         this.createdAt = LocalDateTime.now();
+    }
+
+    /**
+     * 다시 생성한 내용으로 갈아끼운다 (#86).
+     *
+     * 사고당 경위서를 한 건으로 두고 version으로 몇 번째 내용인지 센다. 행을 여러 개 쌓으면
+     * "어느 것을 확정할지", "어느 것을 PDF로 만들지"가 화면마다 따라붙는데, 사용자에게 필요한 것은
+     * 언제나 "지금 경위서"다.
+     */
+    public void replaceContent(String narrative, List<String> summary,
+                                List<String> unverifiedItems, String disclaimer) {
+        this.narrative = narrative;
+        this.summary = summary;
+        this.unverifiedItems = unverifiedItems;
+        this.disclaimer = disclaimer;
+        this.version++;
+    }
+
+    /** 사용자가 본문을 고친다. 요약·미확인 항목은 AI가 뽑은 그대로 둔다. */
+    public void updateNarrative(String narrative) {
+        this.narrative = narrative;
+        this.version++;
+    }
+
+    /**
+     * 확정. 이후에는 내용을 바꿀 수 없다 — 보험 서류로 나간 문서가 나중에 달라지면 안 된다.
+     * 확정 시각을 남기는 것은 경위서가 언제 기준의 문서인지 서류에 드러나야 하기 때문이다.
+     */
+    public void confirm() {
+        this.status = ReportStatus.CONFIRMED;
+        this.confirmedAt = LocalDateTime.now();
+    }
+
+    public boolean isConfirmed() {
+        return this.status == ReportStatus.CONFIRMED;
     }
 }

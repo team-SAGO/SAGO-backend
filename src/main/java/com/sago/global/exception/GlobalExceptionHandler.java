@@ -6,6 +6,9 @@ import com.sago.domain.accident.AccidentNotFoundException;
 import com.sago.domain.auth.UnsupportedProviderException;
 import com.sago.domain.auth.WithdrawnUserException;
 import com.sago.domain.checklist.ChecklistItemNotFoundException;
+import com.sago.domain.report.ReportAlreadyConfirmedException;
+import com.sago.domain.report.ReportGenerationFailedException;
+import com.sago.domain.report.ReportNotFoundException;
 import com.sago.domain.terms.RequiredTermsNotAgreedException;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.global.client.oauth.OAuthApiException;
@@ -181,6 +184,32 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.badRequest()
             .body(new ErrorResponse("INVALID_REQUEST", e.getMessage()));
+    }
+
+    @ExceptionHandler(ReportNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleReportNotFound(ReportNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(new ErrorResponse("REPORT_NOT_FOUND", e.getMessage()));
+    }
+
+    /**
+     * 확정된 경위서를 고치려 한 경우. 요청 형식은 올바르고 지금 상태에서만 안 되는 일이라 409로 내린다.
+     */
+    @ExceptionHandler(ReportAlreadyConfirmedException.class)
+    public ResponseEntity<ErrorResponse> handleReportAlreadyConfirmed(ReportAlreadyConfirmedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(new ErrorResponse("REPORT_ALREADY_CONFIRMED", e.getMessage()));
+    }
+
+    /**
+     * AI가 경위서를 만들지 못한 경우. 우리 서버 잘못은 아니라 502로 내려 원인이 외부에 있음을 알리고,
+     * 사용자가 할 수 있는 일(다시 시도 또는 직접 작성)을 메시지로 안내한다. 소셜 로그인 실패와 같은 방침이다.
+     */
+    @ExceptionHandler(ReportGenerationFailedException.class)
+    public ResponseEntity<ErrorResponse> handleReportGenerationFailed(ReportGenerationFailedException e) {
+        log.warn("경위서 생성 실패", e);
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+            .body(new ErrorResponse("REPORT_GENERATION_FAILED", e.getMessage()));
     }
 
     // ---- 스프링 MVC가 요청을 해석하다 실패한 경우 (#72) ----
