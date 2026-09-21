@@ -17,9 +17,23 @@ spring:
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
 
+  # ---- 스키마 마이그레이션 (Flyway) ----
+  # 스키마는 db/migration의 SQL이 만든다. 엔티티를 고치면 반드시 V2__, V3__ 으로 변경 스크립트를 쌓는다.
+  #
+  # baseline-on-migrate는 일부러 켜지 않는다. 켜면 ddl-auto가 만들어둔 옛 DB를 V1이 적용된
+  # 것으로 표시하고 넘어가는데, 그 DB에 V1의 유니크 제약·인덱스가 빠져 있어도 validate는
+  # 제약을 보지 않아 그대로 기동한다. 중복 가입 차단·토큰 회전 경합 판정 같은 방어가 조용히
+  # 빠진 채로 돈다. 꺼두면 옛 DB에서는 Flyway가 기동을 막으므로, DB를 새로 만들어 V1을
+  # 처음부터 적용하게 된다. 운영 DB가 아직 없어서 가능한 선택이다.
+  flyway:
+    enabled: true
+
   jpa:
     hibernate:
-      ddl-auto: update        # 개발 단계: update / 운영: validate 권장
+      # 스키마를 만들지 않고 엔티티와 맞는지만 확인한다.
+      # update로 두면 엔티티만 고치고 마이그레이션을 빠뜨려도 로컬에서는 돌아가서,
+      # 배포 시점에야 어긋남이 드러난다. validate면 그 자리에서 기동이 실패한다.
+      ddl-auto: validate
     properties:
       hibernate:
         format_sql: true
