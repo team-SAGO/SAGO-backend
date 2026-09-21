@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -250,6 +251,19 @@ class S3UploaderTest {
             .isInstanceOf(S3ValidationException.class);
 
         verify(s3Client, never()).putObject(any(PutObjectRequest.class), any(RequestBody.class));
+    }
+
+    @Test
+    @DisplayName("정리용 삭제는 실패해도 예외를 던지지 않는다")
+    void deleteQuietlySwallowsFailure() {
+        // 이 메서드를 부르는 자리는 이미 다른 실패를 처리하는 중이거나 본래 작업이 끝난 뒤라,
+        // 여기서 터진 예외가 올라가면 원래 원인이 가려지거나 성공한 요청이 실패로 뒤집힌다
+        when(s3Client.deleteObject(any(DeleteObjectRequest.class)))
+            .thenThrow(S3Exception.builder().message("삭제 실패").build());
+
+        assertThatCode(() -> s3Uploader.deleteQuietly(
+            "https://sago-test.s3.ap-northeast-2.amazonaws.com/profiles/old.jpg", "테스트 정리"))
+            .doesNotThrowAnyException();
     }
 
     @Test
