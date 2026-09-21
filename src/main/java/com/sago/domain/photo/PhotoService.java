@@ -11,7 +11,6 @@ import com.sago.global.client.s3.MultiUploadResult;
 import com.sago.global.client.s3.MultiUploadResult.FailedUpload;
 import com.sago.global.client.s3.S3Uploader;
 import com.sago.global.time.ReportedTime;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -33,7 +32,6 @@ import java.util.stream.Collectors;
  * 업로드 메서드에는 트랜잭션을 걸지 않았다. S3 업로드는 롤백되지 않는 외부 호출이라
  * DB 저장만 {@link PhotoStore}의 짧은 트랜잭션에 맡기고, 저장이 실패하면 올린 파일을 지운다.
  */
-@Slf4j
 @Service
 public class PhotoService {
 
@@ -67,7 +65,7 @@ public class PhotoService {
         } catch (RuntimeException e) {
             // 기록이 없으면 누구도 찾을 수 없는 파일이라 남겨둘 이유가 없다.
             // 짝 맞추기가 실패한 경우(toPhotos)도 여기서 함께 정리한다.
-            result.uploadedUrls().forEach(this::deleteQuietly);
+            result.uploadedUrls().forEach(url -> s3Uploader.deleteQuietly(url, "사진 저장 실패 정리"));
             throw e;
         }
         return new PhotoUploadResponse(saved, result.failures());
@@ -140,17 +138,5 @@ public class PhotoService {
                 .build());
         }
         return photos;
-    }
-
-    /**
-     * 정리용 삭제. 여기서 터진 예외로 원래 실패 원인이 가려지면 안 되므로 삼키되,
-     * 삼키기만 하면 고아 파일이 생긴 순간을 아무도 모르게 되므로 로그로 남긴다.
-     */
-    private void deleteQuietly(String fileUrl) {
-        try {
-            s3Uploader.delete(fileUrl);
-        } catch (RuntimeException e) {
-            log.warn("사진 저장 실패 후 파일 삭제 실패, S3에 고아 파일이 남습니다: {}", fileUrl, e);
-        }
     }
 }
