@@ -86,13 +86,29 @@ public class KakaoOAuthClient implements OAuthClient {
             throw new OAuthApiException("카카오 사용자 정보 응답에 id가 없습니다.");
         }
 
+        return toUserInfo(response);
+    }
+
+    /**
+     * 카카오 사용자 정보 응답을 해석한다. 응답 형식만 따로 검증할 수 있도록 떼어 두었다.
+     *
+     * 이메일은 두 값이 모두 참일 때만 검증된 것으로 본다.
+     * - is_email_verified: 카카오가 이메일 소유를 인증했는지
+     * - is_email_valid: 그 이메일이 다른 카카오계정에 쓰여 만료되지 않았는지. 만료된 주소는 이미
+     *   다른 사람이 인증해 쓰고 있을 수 있어, 인증 이력만으로는 지금의 소유자라고 볼 수 없다.
+     * 값이 빠져 있으면 거짓으로 본다. 기존 회원 연결은 틀렸을 때 계정 탈취로 이어져 보수적으로 판단한다.
+     */
+    static OAuthUserInfo toUserInfo(JsonNode response) {
         String providerUserId = response.get("id").asText();
         JsonNode account = response.path("kakao_account");
         String email = account.hasNonNull("email") ? account.get("email").asText() : null;
         JsonNode profile = account.path("profile");
         String nickname = profile.hasNonNull("nickname") ? profile.get("nickname").asText() : null;
+        boolean emailVerified = email != null
+            && account.path("is_email_valid").asBoolean(false)
+            && account.path("is_email_verified").asBoolean(false);
 
-        return new OAuthUserInfo(providerUserId, email, nickname);
+        return new OAuthUserInfo(providerUserId, email, nickname, emailVerified);
     }
 
     private RestClient buildRestClient() {

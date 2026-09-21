@@ -42,6 +42,19 @@ public class User {
     @Column(name = "email", nullable = false, length = 255)
     private String email;
 
+    /**
+     * 가입할 때 소셜 제공자가 이 이메일의 소유를 확인했는지 (#33).
+     *
+     * 다른 소셜 계정으로 로그인했을 때 이메일이 같으면 이 회원에 연결하는데, 그 조건으로 쓴다.
+     * 들어오는 쪽만 검증하면, 공격자가 검증 없이 피해자 이메일로 먼저 가입해 두었다가 피해자가
+     * 나중에 로그인할 때 공격자 회원에 붙게 된다. 그래서 기존 회원 쪽의 검증 여부도 남긴다.
+     *
+     * 기본값을 DB에도 둔다. 기존 행이 있는 테이블에 NOT NULL 컬럼을 추가하면 ddl-auto: update가
+     * 실패하기 때문이다. 기존 회원은 검증 여부를 알 수 없으므로 false(연결 대상 아님)가 맞다.
+     */
+    @Column(name = "email_verified", nullable = false, columnDefinition = "boolean default false not null")
+    private boolean emailVerified;
+
     @Column(name = "nickname", length = 100)
     private String nickname;
 
@@ -62,9 +75,10 @@ public class User {
     private LocalDateTime deletedAt;
 
     @Builder
-    public User(String email, String nickname) {
+    public User(String email, String nickname, boolean emailVerified) {
         this.email = email;
         this.nickname = nickname;
+        this.emailVerified = emailVerified;
     }
 
     @PrePersist
