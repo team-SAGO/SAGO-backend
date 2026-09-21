@@ -73,8 +73,11 @@ class FlywayMigrationTest {
             "select table_name from information_schema.tables "
                 + "where upper(table_schema) = 'PUBLIC'");
 
-        assertThat(tables).contains("accident", "user", "photo", "statement", "report",
-            "social_auth", "refresh_token", "terms_agreement", "checklist_item", "contact_log");
+        assertThat(tables).contains(
+            "accident", "user", "social_auth", "refresh_token", "terms_agreement",
+            "photo", "photo_tag", "statement", "checklist_item", "contact_log",
+            "capture_decision", "supplement_question",
+            "report", "report_summary", "report_unverified_item");
     }
 
     @Test
