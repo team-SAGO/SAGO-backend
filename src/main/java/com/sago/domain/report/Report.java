@@ -90,6 +90,16 @@ public class Report {
         this.version = 1;
     }
 
+    /**
+     * 저장된 PDF 주소를 담는다. 확정된 경위서를 PDF로 만든 뒤 호출한다.
+     *
+     * 이전 주소를 덮어쓰지 않는 것을 전제로 한다. 경위서를 고치면 새 버전이 새 행으로 생기고
+     * 각자 자기 PDF를 가지므로, 이미 제출한 PDF가 사라지지 않는다.
+     */
+    public void attachPdf(String pdfUrl) {
+        this.pdfUrl = pdfUrl;
+    }
+
     @PrePersist
     private void prePersist() {
         this.createdAt = LocalDateTime.now();
