@@ -7,6 +7,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -24,7 +25,17 @@ import java.time.LocalDateTime;
  * 이 엔티티는 업로드된 파일의 메타데이터(URL·촬영 위치·시간)만 보관한다.
  */
 @Entity
-@Table(name = "photo")
+@Table(
+    name = "photo",
+    // 사고별로 촬영 순서대로 조회한다. 사고 한 건에 최대 10장이 쌓이고 사고 자체도 계속 늘어나므로,
+    // 정렬까지 인덱스로 해결하도록 created_at을 함께 잡는다.
+    //
+    // photo_id까지 넣는 것은 한 번에 여러 장이 저장되어 created_at이 같아질 수 있기 때문이다.
+    // 조회 쪽이 photo_id로 순서를 확정하므로 인덱스도 거기까지 맞춘다.
+    indexes = @Index(
+        name = "idx_photo_accident_created",
+        columnList = "accident_id, created_at, photo_id")
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Photo {
