@@ -90,6 +90,17 @@ public class Report {
         this.version = 1;
     }
 
+    /**
+     * 저장된 PDF 주소를 담는다. 확정된 경위서를 PDF로 만든 뒤 호출한다.
+     *
+     * 확정된 경위서는 수정도 재생성도 할 수 없으므로(#86), PDF는 확정 시점에 한 번만 붙고
+     * 덮어써지지 않는다. 그래서 이미 제출한 PDF가 나중에 다른 내용으로 바뀌는 일이 없다.
+     * 초안 단계의 수정은 PDF를 저장하지 않으므로 이 주소와 무관하다.
+     */
+    public void attachPdf(String pdfUrl) {
+        this.pdfUrl = pdfUrl;
+    }
+
     @PrePersist
     private void prePersist() {
         this.createdAt = LocalDateTime.now();

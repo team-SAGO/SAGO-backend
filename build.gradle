@@ -69,7 +69,7 @@ dependencies {
 	implementation 'com.google.cloud:google-cloud-speech'
 	//
 	// -- PDF 생성 (OpenHTMLtoPDF)
-	// implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
+	implementation 'com.openhtmltopdf:openhtmltopdf-pdfbox:1.0.10'
 }
 
 tasks.named('test') {
