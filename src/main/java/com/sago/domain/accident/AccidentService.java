@@ -1,15 +1,20 @@
 package com.sago.domain.accident;
 
 import com.sago.domain.accident.dto.AccidentCreateRequest;
+import com.sago.domain.accident.dto.AccidentCreation;
 import com.sago.domain.accident.dto.AccidentResponse;
 import com.sago.domain.user.User;
 import com.sago.domain.user.UserNotFoundException;
 import com.sago.domain.user.UserRepository;
 import com.sago.global.time.ReportedTime;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Step 2 — 사고 발생 버튼을 눌렀을 때 사고 케이스를 만든다 (FR-02).
@@ -23,22 +28,63 @@ public class AccidentService {
     private final AccidentRepository accidentRepository;
     private final UserRepository userRepository;
 
-    public AccidentService(AccidentRepository accidentRepository, UserRepository userRepository) {
+    /**
+     * 진행 중인 사고를 이어서 쓰는 기간. 사고를 만든 시각부터 센다.
+     *
+     * 값을 바꾸려면 재배포가 필요한 건 상수와 같지만, 설정으로 두면 코드를 건드리지 않아도 된다
+     * (gemini.rpm-limit·stt.language-code와 같은 자리). 기본값은 application.yml에 있다.
+     */
+    private final Duration resumeWindow;
+
+    public AccidentService(AccidentRepository accidentRepository, UserRepository userRepository,
+                           @Value("${accident.resume-window}") Duration resumeWindow) {
         this.accidentRepository = accidentRepository;
         this.userRepository = userRepository;
+        this.resumeWindow = resumeWindow;
     }
 
+    /**
+     * 사고를 시작한다. 최근에 시작해 아직 진행 중인 사고가 있으면 새로 만들지 않고 그 사고를 돌려준다 (#34).
+     *
+     * 사고 직후에는 버튼을 두 번 누르거나, 네트워크 재시도가 일어나거나, 앱을 다시 켜고 또 누르기 쉽다.
+     * 그때마다 사고가 새로 생기면 체크리스트·진술·사진이 서로 다른 사고에 흩어지고, 사용자가 되돌릴
+     * 방법도 없다. 그래서 진행 중인 사고를 이어서 쓰게 한다.
+     *
+     * <ul>
+     *   <li><b>시간 창을 둔다.</b> 무제한으로 이어 쓰면 경위서까지 가지 않고 멈춘 사고에 다음 사고가
+     *       붙는다. 중복은 대부분 몇 분 안에 생기고, 그 사이에 실제로 두 번째 사고가 날 가능성은 낮다.
+     *       기간은 {@code accident.resume-window} 설정으로 조정한다.</li>
+     *   <li><b>기준은 발생 시각이 아니라 만든 시각이다.</b> 발생 시각은 사용자가 과거로 입력할 수 있어,
+     *       "3시간 전 사고"를 방금 기록하고 다시 누른 경우를 놓치게 된다.</li>
+     *   <li><b>이어 쓸 때는 요청 값을 반영하지 않는다.</b> 중복 요청은 대개 같은 값이고, 값을 덮어쓰면
+     *       이미 진행한 체크리스트와 사고 정보가 어긋날 수 있다.</li>
+     *   <li><b>회원 행을 잠근다.</b> 버튼 두 번은 거의 동시에 도착해 둘 다 "진행 중 사고 없음"을 볼 수 있다.</li>
+     * </ul>
+     *
+     * 끝난 사고는 이어 쓰지 않는다. 사고를 끝내는 경로는 두 가지다 — 사용자가 {@link #complete}를
+     * 부르거나(사고 처리 종료), 나중에 경위서를 확정할 때 자동으로 끝난다.
+     */
     @Transactional
-    public AccidentResponse create(Long userId, AccidentCreateRequest request) {
-        User user = userRepository.findByUserIdAndDeletedAtIsNull(userId)
+    public AccidentCreation create(Long userId, AccidentCreateRequest request) {
+        // 이어 쓰든 새로 만들든 요청 자체가 올바른지는 먼저 확인한다.
+        LocalDateTime occurredAt = ReportedTime.resolve(request.occurredAt(), "사고 발생 시각");
+
+        User user = userRepository.findActiveByIdForUpdate(userId)
             .orElseThrow(() -> new UserNotFoundException("존재하지 않거나 탈퇴한 회원입니다."));
+
+        Optional<Accident> inProgress = accidentRepository
+            .findFirstByUser_UserIdAndStatusAndCreatedAtAfterOrderByCreatedAtDesc(
+                userId, AccidentStatus.IN_PROGRESS, LocalDateTime.now().minus(resumeWindow));
+        if (inProgress.isPresent()) {
+            return AccidentCreation.resumed(AccidentResponse.from(inProgress.get()));
+        }
 
         Accident accident = accidentRepository.save(Accident.builder()
             .user(user)
             .accidentType(request.accidentType())
             .injurySelf(request.injurySelf())
             .injuryOther(request.injuryOther())
-            .occurredAt(ReportedTime.resolve(request.occurredAt(), "사고 발생 시각"))
+            .occurredAt(occurredAt)
             .latitude(request.latitude())
             .longitude(request.longitude())
             .direction(request.direction())
@@ -46,7 +92,7 @@ public class AccidentService {
             .memo(request.memo())
             .build());
 
-        return AccidentResponse.from(accident);
+        return AccidentCreation.created(AccidentResponse.from(accident));
     }
 
     /**
@@ -69,6 +115,25 @@ public class AccidentService {
     @Transactional(readOnly = true)
     public AccidentResponse getAccident(Long userId, Long accidentId) {
         return AccidentResponse.from(getOwnedAccident(userId, accidentId));
+    }
+
+    /**
+     * 사고 처리를 끝낸다 (#34).
+     *
+     * 이 API가 없으면 진행 중인 사고를 사용자가 닫을 방법이 없어, 시간 창 동안은 새 사고를 만들 수 없다.
+     * 그 사이에 진짜로 다음 사고가 나면 요청이 이전 사고로 흡수되면서 사고 유형·부상 정도·위치가
+     * 조용히 버려진다. 경위서 확정 시점의 자동 종료만으로는 이 공백이 메워지지 않는다 —
+     * 경위서는 사고 직후가 아니라 한참 뒤에 확정될 수 있기 때문이다.
+     *
+     * 이미 끝난 사고를 다시 끝내도 성공으로 본다. 종료 버튼을 두 번 눌렀다고 오류를 낼 이유가 없고,
+     * 결과(끝난 사고)도 같다.
+     */
+    @Transactional
+    public AccidentResponse complete(Long userId, Long accidentId) {
+        Accident accident = getOwnedAccident(userId, accidentId);
+        accident.complete();
+
+        return AccidentResponse.from(accident);
     }
 
     /**
